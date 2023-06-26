@@ -52,9 +52,9 @@ def promptBuilder(promptVariablesDict=None, saveTemplate=False, config=None):
         promptVariablesDict = {promptVariable:f'<<ENTER {promptVariable.upper()} HERE>>' for promptVariable in config.promptVariableNames}
 
     starterText = f'''You are a grader for the course "{promptVariablesDict['Course Name']}". 
-Your task is to grade a student's submission for the assignment "{promptVariablesDict['Assignment Name']}" using the provided criteria in the context of this course.
+Your task is to grade a student's submission for the assignment "{promptVariablesDict['Assignment Name']}" using the provided criteria in the context of this course. You will follow these specific rubric criteria to assign points related to different aspects of the assignment.
 A summary of the assignment is "{promptVariablesDict['Assignment Description']}". 
-Each criterion has a description of the criteria used to grade, and a ratings guide of points that can be assigned which uses the format of <rating description> : <points>. 
+Each criterion has a description of the criteria used to grade, and a ratings guide of the number of points that can be assigned for the criterion which uses the format of <rating description> : <points>. 
 You must select the number of points to give the submission per criterion from the respective ratings guide.
 The student's submission is delimited by triple backticks.
 The criteria are:
@@ -63,8 +63,8 @@ The criteria are:
     endText = f'''The student submission is:
 ```{promptVariablesDict['Student Submission']}```
 Perform the following tasks:
-1. For each criterion listed, return the assigned rating and points, and a comment with less than 20 words to point out errors made and areas of improvement.
-2. Return a total score summing up all the points as per criterion calculated above out of a possible {promptVariablesDict['Maximum Points']} points.
+1. For each criterion listed, return the assigned rating and points, and a comment with less than 20 words to point out any errors made by the student, and areas where the student can improve.
+2. Return a total score summing up the points you assigned for each criterion to reach a total score out of a possible {promptVariablesDict['Maximum Points']} points.
 Use the format:
 <criterion 1 ID> : <criterion 1 rating description> : <criterion 1 score> : <comment>
 <criterion 2 ID> : <criterion 2 rating description> : <criterion 2 score> : <comment>
@@ -76,6 +76,22 @@ Total score : <Total Score>
     fullText = starterText + promptVariablesDict['Criterion Description and Rubric'] + endText
 
     return fullText
+
+def buildCritPrompt(criterionDF):
+    fullCritText = ''
+    for index, cRow in criterionDF.iterrows():
+        ratingsTextList = [f'\t{rating["description"]} : {rating["points"]} points\n' 
+                           for rating in cRow['ratings']]
+        if cRow['long_description']:
+            criteriaText = f"{index+1}. Criterion Title: '{cRow['description_rubric']}', CriterionID: '{cRow['criterion_id'] }', \
+                \nCriterion Description: '{cRow['long_description']}', \
+                \nRatings Guide:\n"+''.join(ratingsTextList)
+        else:
+            criteriaText = f"{index+1}. Criterion Title: '{cRow['description_rubric']}', CriterionID: '{cRow['criterion_id'] }', \
+                    \nRatings Guide:\n"+''.join(ratingsTextList)
+        fullCritText += criteriaText
+
+    return fullCritText
 
 def processResponse(responseText):
     critScores = []
@@ -164,15 +180,7 @@ def processGRARow(row, config):
     # print(row)
     # display(fullCriterionDF)
 
-    fullCritText = ''
-    for index, cRow in fullCriterionDF.iterrows():
-        ratingsTextList = [f'\t{rating["description"]} : {rating["points"]} points\n' 
-                           for rating in cRow['ratings']]
-        fullCritText += f"{index+1}. Criterion Title: '{cRow['description_rubric']}', \
-                        CriterionID: '{cRow['criterion_id'] }', \
-                        \nCriterion Description: '{cRow['long_description']}', \
-                        \nRatings Guide:\n"+''.join(ratingsTextList)
-        
+    fullCritText = buildCritPrompt(fullCriterionDF)
     studentSubmission = getSubmissionText(row['assignment_id'], row['submitter_id'])
 
     if studentSubmission:
@@ -186,10 +194,14 @@ def processGRARow(row, config):
                             }
         fullPrompt = promptBuilder(promptVariableDict)
         # print(fullPrompt)
+        # with open(os.path.join(config.versionOutputFolder, f'{config.fullName}_exampleFilledPrompt.txt'), 'w') as textFile:
+        #     textFile.write(fullPrompt)
+        # print(x)
        
         peerBot = peerGPT(config)
         response, responseSucess = peerBot.get_completion(fullPrompt)
-
+        del peerBot
+        
         if responseSucess:
             scoreBreakdownDF, totalScore = processResponse(response['Text'])
             finishedCriterionDF = fullCriterionDF.merge(scoreBreakdownDF, 
@@ -265,7 +277,8 @@ class Config:
         
         self.rootSubmissionFolder: str = 'Submissions'
         self.CSVDataFolder: str ='CSV Data'
-        
+        self.ExcelDumpFolder: str = 'Excel Dumps'
+        self.ChartDumpFolder: str = 'Chart Dumps'
         self.saveFolders = {
                             'pickle':'pickledSaves',
                             'error':'errorData'

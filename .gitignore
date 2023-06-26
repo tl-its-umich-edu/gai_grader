@@ -2,11 +2,11 @@
 .env
 .pep8speaks.yml
 CSV Data/
+Excel Dumps/
+Chart Dumps/
 Output/
 Submissions/
 Text Submissions/
+Supplemental Docs/
 temp/
 __pycache__
-CriterionData.xlsx
-ExampleScoreData.xlsx
-ScoreData.xlsx
