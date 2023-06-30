@@ -52,65 +52,61 @@ def promptBuilder(promptVariablesDict=None, saveTemplate=False, config=None):
         promptVariablesDict = {promptVariable:f'<<ENTER {promptVariable.upper()} HERE>>' for promptVariable in config.promptVariableNames}
 
     starterText = f'''You are a grader for the course "{promptVariablesDict['Course Name']}". 
-Your task is to grade a student's submission for the assignment "{promptVariablesDict['Assignment Name']}" using the provided criteria in the context of this course. You will follow these specific rubric criteria to assign points related to different aspects of the assignment.
-A summary of the assignment is "{promptVariablesDict['Assignment Description']}". 
-Each criterion has a description of the criteria used to grade, and a ratings guide of the number of points that can be assigned for the criterion which uses the format of <rating description> : <points>. 
-You must select the number of points to give the submission per criterion from the respective ratings guide.
+Your task is to grade a student's submission for the assignment "{promptVariablesDict['Assignment Name']}" using the provided criteria in the context of this course. 
+You will follow these specific rubric criteria to assign points related to different aspects of the assignment.
+The assignment's summary is "{promptVariablesDict['Assignment Description']}". 
+Each criteria has guidelines used to grade that will inform you on how to make penalties and leave feedback. Use the guidelines per criteria to assign a criteria score and feedback.
+The points assigned must lie between 0 and the max points as listed for each criteria.
 The student's submission is delimited by triple backticks.
 The criteria are:
 '''
 
     endText = f'''The student submission is:
 ```{promptVariablesDict['Student Submission']}```
-Perform the following tasks:
-1. For each criterion listed, return the assigned rating and points, and a comment with less than 20 words to point out any errors made by the student, and areas where the student can improve.
-2. Return a total score summing up the points you assigned for each criterion to reach a total score out of a possible {promptVariablesDict['Maximum Points']} points.
+For each criterion listed, return the assigned points, and feedback comment of under 100 words based on the criterion guidelines and errors made.
 Use the format:
-<criterion 1 ID> : <criterion 1 rating description> : <criterion 1 score> : <comment>
-<criterion 2 ID> : <criterion 2 rating description> : <criterion 2 score> : <comment>
+<criterion 1 ID> : <criterion 1 score> : <comment>
+<criterion 2 ID> : <criterion 2 score> : <comment>
 .
 .
 .
-Total score : <Total Score>
 '''
     fullText = starterText + promptVariablesDict['Criterion Description and Rubric'] + endText
-
     return fullText
 
-def buildCritPrompt(criterionDF):
+def buildCritPrompt(criterionDF, useCustomDesc=True):
     fullCritText = ''
     for index, cRow in criterionDF.iterrows():
-        ratingsTextList = [f'\t{rating["description"]} : {rating["points"]} points\n' 
-                           for rating in cRow['ratings']]
-        if cRow['long_description']:
-            criteriaText = f"{index+1}. Criterion Title: '{cRow['description_rubric']}', CriterionID: '{cRow['criterion_id'] }', \
-                \nCriterion Description: '{cRow['long_description']}', \
-                \nRatings Guide:\n"+''.join(ratingsTextList)
+        if useCustomDesc:
+            criteriaText = f"{index+1}. Criterion Title: '{cRow['description_rubric']}', \
+CriterionID: '{cRow['criterion_id'] }', \
+Max Points: '{cRow['points_rubric'] }', \
+\nCriterion Guidelines: {cRow['custom_description']}\n"
         else:
-            criteriaText = f"{index+1}. Criterion Title: '{cRow['description_rubric']}', CriterionID: '{cRow['criterion_id'] }', \
+            ratingsTextList = [f'\t{rating["description"]} : {rating["points"]} points\n' 
+                           for rating in cRow['ratings']]
+            if cRow['long_description']:
+                criteriaText = f"{index+1}. Criterion Title: '{cRow['description_rubric']}', CriterionID: '{cRow['criterion_id'] }', \
+                    \nCriterion Description: '{cRow['long_description']}', \
                     \nRatings Guide:\n"+''.join(ratingsTextList)
+            else:
+                criteriaText = f"{index+1}. Criterion Title: '{cRow['description_rubric']}', CriterionID: '{cRow['criterion_id'] }', \
+                        \nRatings Guide:\n"+''.join(ratingsTextList)
         fullCritText += criteriaText
-
     return fullCritText
 
 def processResponse(responseText):
     critScores = []
     responseLines = responseText.split('\n')
-    
     for line in responseLines:
         if ':' in line:
-            if len(line.split(':'))==4:
-                id, rating, score, reason = line.split(':')
+            if len(line.split(':'))==3:
+                id, score, reason = line.split(':')
                 score = float(score.strip().split()[0].strip())
-                critScores.append({'peerGPT_criterion_id':id.strip(), 'peerGPT_rating':rating.strip(), 'peerGPT_criterion_score':score, 'peerGPT_reason':reason.strip()})
+                critScores.append({'peerGPT_criterion_id':id.strip(), 'peerGPT_criterion_score':score, 'peerGPT_reason':reason.strip()})
         else:
             critScores[-1]['peerGPT_reason'] += line
-        if 'Total score'.lower() in line.lower():
-            try:
-                totalScore = float(line.strip().split(':')[-1].strip())
-            except:
-                totalScore = float(line.strip().split(':')[-1].split()[0])
-    return pd.DataFrame(critScores), totalScore
+    return pd.DataFrame(critScores)
 
 def getSubmissionText(assignmentID, userID, textSubmissionsFolder='Text Submissions'):
     submissionFilePath = os.path.join(textSubmissionsFolder, f'{assignmentID}', f'{userID}.txt')
@@ -134,23 +130,18 @@ def checkIfSaved(assignmentID, userID, config):
 def processTokenCount(row, config):        
     gradeDataDF = pd.DataFrame(row['data_grade'])
     rubricDataDF = pd.DataFrame(row['data_rubric'])
+    descDataDF = config.critDescDF[config.critDescDF['assignment_id']==row['assignment_id']][['custom_description', 'id']]
 
     fullCriterionDF = gradeDataDF.merge(rubricDataDF, left_on='criterion_id', 
                                         right_on='id', suffixes=('_grade', '_rubric'))
-    fullCriterionDF = fullCriterionDF.drop(['id_grade', 'id_rubric', 'learning_outcome_id', 
+    fullCriterionDF = fullCriterionDF.merge(descDataDF, left_on='criterion_id', right_on='id')
+    fullCriterionDF = fullCriterionDF.drop(['id_grade', 'id_rubric', 'learning_outcome_id', 'id',
                                             'comments_enabled', 'comments_html', 'criterion_use_range'], 
                                             axis=1, errors='ignore')    
     # print(row)
     # display(fullCriterionDF)
 
-    fullCritText = ''
-    for index, cRow in fullCriterionDF.iterrows():
-        ratingsTextList = [f'\t{rating["description"]} : {rating["points"]} points\n' 
-                           for rating in cRow['ratings']]
-        fullCritText += f"{index+1}. Criterion Title: '{cRow['description_rubric']}', \
-                        CriterionID: '{cRow['criterion_id'] }', \
-                        \nCriterion Description: '{cRow['long_description']}', \
-                        \nRatings Guide:\n"+''.join(ratingsTextList)
+    fullCritText = buildCritPrompt(fullCriterionDF, True)
     studentSubmission = getSubmissionText(row['assignment_id'], row['submitter_id'])
 
     if studentSubmission:
@@ -171,16 +162,18 @@ def processTokenCount(row, config):
 def processGRARow(row, config):        
     gradeDataDF = pd.DataFrame(row['data_grade'])
     rubricDataDF = pd.DataFrame(row['data_rubric'])
+    descDataDF = config.critDescDF[config.critDescDF['assignment_id']==row['assignment_id']][['custom_description', 'id']]
 
     fullCriterionDF = gradeDataDF.merge(rubricDataDF, left_on='criterion_id', 
                                         right_on='id', suffixes=('_grade', '_rubric'))
-    fullCriterionDF = fullCriterionDF.drop(['id_grade', 'id_rubric', 'learning_outcome_id', 
+    fullCriterionDF = fullCriterionDF.merge(descDataDF, left_on='criterion_id', right_on='id')
+    fullCriterionDF = fullCriterionDF.drop(['id_grade', 'id_rubric', 'learning_outcome_id', 'id',
                                             'comments_enabled', 'comments_html', 'criterion_use_range'], 
-                                            axis=1, errors='ignore')    
+                                            axis=1, errors='ignore') 
     # print(row)
     # display(fullCriterionDF)
 
-    fullCritText = buildCritPrompt(fullCriterionDF)
+    fullCritText = buildCritPrompt(fullCriterionDF, True)
     studentSubmission = getSubmissionText(row['assignment_id'], row['submitter_id'])
 
     if studentSubmission:
@@ -203,7 +196,7 @@ def processGRARow(row, config):
         del peerBot
         
         if responseSucess:
-            scoreBreakdownDF, totalScore = processResponse(response['Text'])
+            scoreBreakdownDF = processResponse(response['Text'])
             finishedCriterionDF = fullCriterionDF.merge(scoreBreakdownDF, 
                                                         left_on='criterion_id', 
                                                         right_on='peerGPT_criterion_id', 
@@ -213,7 +206,7 @@ def processGRARow(row, config):
             savedRowDF = row[['submitter_id', 'grader_id', 'rubric_id', 
                               'assignment_id', 'score', 'points_possible']]
             savedRowDF['data_peerGPT'] = finishedCriterionDF
-            savedRowDF['peerGPT_score'] = totalScore
+            savedRowDF['peerGPT_score'] = finishedCriterionDF['peerGPT_criterion_score'].sum()
             savedRowDict = savedRowDF.to_dict()
             # display(savedRowDF)
             return savedRowDict, True
@@ -256,11 +249,11 @@ def convertPicklesToDF(folderName, config):
     saveDataList = []
     for savedPickle in os.listdir(config.saveFolderPath[folderName]):
         rowSaveData = pickle.load(open(os.path.join(config.saveFolderPath[folderName], savedPickle), 'rb'))
-        if folderName=='pickle':
-            if 'peerGPT_criterion_score' in rowSaveData['data_peerGPT']:
-                rowSaveData['peerGPT_score_real'] = rowSaveData['data_peerGPT']['peerGPT_criterion_score'].sum()
-            else:
-                rowSaveData['peerGPT_score_real'] = rowSaveData['data_peerGPT']['peerGPT__criterion_score'].sum()
+        # if folderName=='pickle':
+        #     if 'peerGPT_criterion_score' in rowSaveData['data_peerGPT']:
+        #         rowSaveData['peerGPT_score_real'] = rowSaveData['data_peerGPT']['peerGPT_criterion_score'].sum()
+        #     else:
+        #         rowSaveData['peerGPT_score_real'] = rowSaveData['data_peerGPT']['peerGPT__criterion_score'].sum()
         saveDataList.append(rowSaveData)
     resultsDF = pd.DataFrame(saveDataList)
     return resultsDF
@@ -300,6 +293,9 @@ class Config:
         self.fullName: str = None
         self.versionOutputFolder = None
         self.poolSize: int = 8
+
+        self.critDescDF = pd.read_excel(os.path.join(self.CSVDataFolder,'Criterion Info Sheet.xlsx'))
+        del self.critDescDF['Unnamed: 0']
 
         self.textSubmissionsFolder: str = 'Text Submissions'
         if not os.path.exists(self.textSubmissionsFolder):
