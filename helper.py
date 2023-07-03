@@ -19,19 +19,18 @@ logging.basicConfig(
 )
 
 def getGRAData(config, mpMode=False):
-    gradeCSVFile = f'{config.courseName}gradings.csv'
-    rubricCSVFile = f'{config.courseName}rubrics.csv'
-    assignmentCSVFile = f'{config.courseName}assignments.csv'
-    
-    gradeDataDF = pd.read_csv(os.path.join(config.CSVDataFolder,gradeCSVFile))
-    rubricDataDF = pd.read_csv(os.path.join(config.CSVDataFolder,rubricCSVFile))
-    assignmentDataDF = pd.read_csv(os.path.join(config.CSVDataFolder,assignmentCSVFile))
+    dataDFs = {}
+    for dataFileName in ['assignments', 'gradings', 'rubrics']:
+        fullFileName = f'{config.courseName}{dataFileName}.csv'
+        filePath = os.path.join(config.baseDataFolder, config.dataFolders['CSV_DATA'], fullFileName)
+        dataDF = pd.read_csv(filePath)
+        dataDFs[dataFileName] = dataDF
 
-    gradeDataDF['data'] = gradeDataDF['data'].apply(lambda dataJSON: json.loads(dataJSON))
-    rubricDataDF['data'] = rubricDataDF['data'].apply(lambda dataJSON: json.loads(dataJSON))
+    dataDFs['gradings']['data'] = dataDFs['gradings']['data'].apply(lambda dataJSON: json.loads(dataJSON))
+    dataDFs['rubrics']['data'] = dataDFs['rubrics']['data'].apply(lambda dataJSON: json.loads(dataJSON))
 
-    gradeRubricDF = gradeDataDF.merge(rubricDataDF, on='rubric_id', suffixes=('_grade', '_rubric'))
-    gradeRubricAssignmentDF = gradeRubricDF.merge(assignmentDataDF, on='assignment_id', 
+    gradeRubricDF = dataDFs['gradings'].merge(dataDFs['rubrics'], on='rubric_id', suffixes=('_grade', '_rubric'))
+    gradeRubricAssignmentDF = gradeRubricDF.merge(dataDFs['assignments'], on='assignment_id', 
                                                   suffixes=('', '_assignment'))
 
     gradeRubricAssignmentDF = gradeRubricAssignmentDF[['submitter_id', 'grader_id', 'score', 'rubric_id', 
@@ -108,8 +107,10 @@ def processResponse(responseText):
             critScores[-1]['peerGPT_reason'] += line
     return pd.DataFrame(critScores)
 
-def getSubmissionText(assignmentID, userID, textSubmissionsFolder='Text Submissions'):
-    submissionFilePath = os.path.join(textSubmissionsFolder, f'{assignmentID}', f'{userID}.txt')
+def getSubmissionText(assignmentID, userID, config):
+    submissionFilePath = os.path.join(config.baseDataFolder, \
+                                      config.dataFolders['TEXT_SUBMISSIONS'], \
+                                        f'{assignmentID}', f'{userID}.txt')
     if os.path.exists(submissionFilePath):
         with open(submissionFilePath) as textFile:
             submissionLines = textFile.readlines()
@@ -121,13 +122,16 @@ def getSubmissionText(assignmentID, userID, textSubmissionsFolder='Text Submissi
 
 def checkIfSaved(assignmentID, userID, config):
     saveName = f"{assignmentID}-{userID}.p"
-    for subFolder in config.saveFolders:
-        fileSavePath = os.path.join(config.saveFolderPath[subFolder], saveName)
-        if os.path.exists(fileSavePath):
+    for pickleFolder in ['saves', 'errors']:
+        filePath = os.path.join(config.baseOutputFolder, \
+                                config.outputPickleLookup[pickleFolder], \
+                                config.fullName, \
+                                saveName)
+        if os.path.exists(filePath):
             return True
     return False
 
-def processTokenCount(row, config):        
+def getRowCriterionDF(row, config):
     gradeDataDF = pd.DataFrame(row['data_grade'])
     rubricDataDF = pd.DataFrame(row['data_rubric'])
     descDataDF = config.critDescDF[config.critDescDF['assignment_id']==row['assignment_id']][['custom_description', 'id']]
@@ -137,12 +141,13 @@ def processTokenCount(row, config):
     fullCriterionDF = fullCriterionDF.merge(descDataDF, left_on='criterion_id', right_on='id')
     fullCriterionDF = fullCriterionDF.drop(['id_grade', 'id_rubric', 'learning_outcome_id', 'id',
                                             'comments_enabled', 'comments_html', 'criterion_use_range'], 
-                                            axis=1, errors='ignore')    
-    # print(row)
-    # display(fullCriterionDF)
+                                            axis=1, errors='ignore') 
+    return fullCriterionDF
 
+def processTokenCount(row, config):        
+    fullCriterionDF = getRowCriterionDF(row, config)
     fullCritText = buildCritPrompt(fullCriterionDF, True)
-    studentSubmission = getSubmissionText(row['assignment_id'], row['submitter_id'])
+    studentSubmission = getSubmissionText(row['assignment_id'], row['submitter_id'], config)
 
     if studentSubmission:
         promptVariableDict = {
@@ -160,21 +165,9 @@ def processTokenCount(row, config):
         return False
 
 def processGRARow(row, config):        
-    gradeDataDF = pd.DataFrame(row['data_grade'])
-    rubricDataDF = pd.DataFrame(row['data_rubric'])
-    descDataDF = config.critDescDF[config.critDescDF['assignment_id']==row['assignment_id']][['custom_description', 'id']]
-
-    fullCriterionDF = gradeDataDF.merge(rubricDataDF, left_on='criterion_id', 
-                                        right_on='id', suffixes=('_grade', '_rubric'))
-    fullCriterionDF = fullCriterionDF.merge(descDataDF, left_on='criterion_id', right_on='id')
-    fullCriterionDF = fullCriterionDF.drop(['id_grade', 'id_rubric', 'learning_outcome_id', 'id',
-                                            'comments_enabled', 'comments_html', 'criterion_use_range'], 
-                                            axis=1, errors='ignore') 
-    # print(row)
-    # display(fullCriterionDF)
-
+    fullCriterionDF = getRowCriterionDF(row, config)
     fullCritText = buildCritPrompt(fullCriterionDF, True)
-    studentSubmission = getSubmissionText(row['assignment_id'], row['submitter_id'])
+    studentSubmission = getSubmissionText(row['assignment_id'], row['submitter_id'], config)
 
     if studentSubmission:
         promptVariableDict = {
@@ -236,10 +229,12 @@ def checkRunSaveMP(rowData):
 
 def saveOutputasPickle(dataDict, runSuccess, config):
     saveName = f"{dataDict['assignment_id']}-{dataDict['submitter_id']}.p"
-    if runSuccess:
-        pickleSavePath = os.path.join(config.saveFolderPath['pickle'], saveName)
-    else:
-        pickleSavePath = os.path.join(config.saveFolderPath['error'], saveName)
+
+    pickleFolder = 'saves' if runSuccess else 'error'
+    pickleSavePath = os.path.join(config.baseOutputFolder, \
+                                    config.outputPickleLookup[pickleFolder], \
+                                    config.fullName, \
+                                    saveName)
 
     with open(pickleSavePath, 'wb') as handle:
         pickle.dump(dataDict, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -247,9 +242,12 @@ def saveOutputasPickle(dataDict, runSuccess, config):
 
 def convertPicklesToDF(folderName, config):
     saveDataList = []
-    for savedPickle in os.listdir(config.saveFolderPath[folderName]):
-        rowSaveData = pickle.load(open(os.path.join(config.saveFolderPath[folderName], savedPickle), 'rb'))
-        # if folderName=='pickle':
+    pickleFolder = os.path.join(config.baseOutputFolder, \
+                                config.outputPickleLookup[folderName], \
+                                config.fullName)
+    for savedPickle in os.listdir(pickleFolder):
+        rowSaveData = pickle.load(open(os.path.join(pickleFolder, savedPickle), 'rb'))
+        # if folderName=='saves':
         #     if 'peerGPT_criterion_score' in rowSaveData['data_peerGPT']:
         #         rowSaveData['peerGPT_score_real'] = rowSaveData['data_peerGPT']['peerGPT_criterion_score'].sum()
         #     else:
@@ -257,6 +255,18 @@ def convertPicklesToDF(folderName, config):
         saveDataList.append(rowSaveData)
     resultsDF = pd.DataFrame(saveDataList)
     return resultsDF
+
+def checkFolderData(folderPath):
+    folderExists, dataExists = True, True
+    if not os.path.exists(folderPath):
+        os.mkdir(folderPath)
+        folderExists = False
+        dataExists = False
+    elif not len(os.listdir(folderPath)):
+        dataExists = False
+
+    return folderExists, dataExists
+
 
 class Config:
     def __init__(self):
@@ -268,15 +278,32 @@ class Config:
                                    'TYPE':None,
                                    'DEPLOYMENT_NAME':None}
         
-        self.rootSubmissionFolder: str = 'Submissions'
-        self.CSVDataFolder: str ='CSV Data'
-        self.ExcelDumpFolder: str = 'Excel Dumps'
-        self.ChartDumpFolder: str = 'Chart Dumps'
-        self.saveFolders = {
-                            'pickle':'pickledSaves',
-                            'error':'errorData'
-                            }
-        self.saveFolderPath = {}
+        self.baseDataFolder: str = 'data'
+        self.baseOutputFolder: str = 'output'
+        self.tempFolder: str = 'temp'
+
+        self.dataFolders: dict = {
+                                'SUBMISSIONS':'Submissions',
+                                'CSV_DATA':'CSV Data',
+                                'TEXT_SUBMISSIONS':'Converted Text Submissions',
+                                'SUPPLEMENTAL_FILES':'Supplemental Documentation'
+                                }
+        
+        self.outputFolders: dict = {
+                                'EXCEL_OUTPUT':'Excel File Outputs',
+                                'CHART_OUTPUT':'Chart File Outputs',
+                                'PICKLE_SAVES':'Pickled Save Outputs',
+                                'PICKLE_ERRORS':'Pickled Error Outputs',
+                                'PROMPT_FILES':'Saved Prompt Files',
+                                }
+        
+        self.outputPickleLookup: dict = {
+                                'saves':'Pickled Save Outputs',
+                                'errors':'Pickled Error Outputs',
+                                }
+        
+        self.CSVDataFiles = ['criterion', 'assignments', 'gradings', 'rubrics']
+
         self.courseName: str = 'MOVESCI_110_WN_2023_584988_MWrite_'
         self.simpleCourseName: str = 'Movement Science'
 
@@ -291,30 +318,30 @@ class Config:
 
         self.overWriteSave: bool = False
         self.fullName: str = None
-        self.versionOutputFolder = None
+        self.critDescDF = None
         self.poolSize: int = 8
 
-        self.critDescDF = pd.read_excel(os.path.join(self.CSVDataFolder,'Criterion Info Sheet.xlsx'))
-        del self.critDescDF['Unnamed: 0']
+    def validateDataFolders(self):
+        dataValidationTracker = True
+        for dataFolder in self.dataFolders:
+            dataFolderPath = os.path.join(self.baseDataFolder, self.dataFolders[dataFolder])
+            folderExists, dataExists = checkFolderData(dataFolderPath)
+            dataValidationSuccess = folderExists and dataExists
+            if dataFolder not in ['SUPPLEMENTAL_FILES']:
+                dataValidationTracker = False if not dataValidationSuccess or not dataValidationTracker else True
+            if dataFolder in ['SUBMISSIONS', 'CSV_DATA']:
+                if not folderExists:
+                    errorMsg = f'No folder for "{dataFolderPath}". Please add data to folder.'
+                    logging.error(errorMsg)
+                if folderExists and not dataExists:
+                    errorMsg = f'No data found in folder for "{dataFolderPath}". Please add data to folder.'
+                    logging.error(errorMsg)
+            elif dataFolder in ['TEXT_SUBMISSIONS']:
+                if not folderExists or not dataExists:
+                    errorMsg = f'No data found in "{dataFolderPath}". Run conversion script to generate text data first.'
+                    logging.error(errorMsg)
 
-        self.textSubmissionsFolder: str = 'Text Submissions'
-        if not os.path.exists(self.textSubmissionsFolder):
-            os.mkdir(self.textSubmissionsFolder)
-        self.tempFolder: str = 'temp'
-        if not os.path.exists(self.tempFolder):
-            os.mkdir(self.tempFolder)
-        self.rootOutputFolder: str = 'Output'
-        if not os.path.exists(self.rootOutputFolder):
-            os.mkdir(self.rootOutputFolder)
-
-    def setSaveDetails(self, fullName):
-        self.fullName = fullName
-        self.versionOutputFolder = os.path.join(self.rootOutputFolder,self.fullName)
-        for subFolder in self.saveFolders:
-            if not os.path.exists(os.path.join(self.rootOutputFolder,self.fullName,subFolder)):
-                os.makedirs(os.path.join(self.rootOutputFolder,self.fullName,subFolder))
-            self.saveFolderPath[subFolder] = os.path.join(self.rootOutputFolder,self.fullName,subFolder)
-        return True
+        return dataValidationTracker
 
     def set(self, name, value):
         if name in self.__dict__:
@@ -361,13 +388,43 @@ class Config:
                 'OPENAI_API_' + credPart, self.openAIParams[credPart], str)
             envImportSuccess = False if not self.openAIParams[credPart] or not envImportSuccess else True
 
+        self.courseName = self.configFetch(
+            'FULL_COURSE_NAME', self.courseName, str)
+        envImportSuccess = False if not self.courseName or not envImportSuccess else True
+
+        self.simpleCourseName = self.configFetch(
+            'SIMPLE_COURSE_NAME', self.simpleCourseName, str)
+        envImportSuccess = False if not self.simpleCourseName or not envImportSuccess else True
+
+        for folder in [self.baseDataFolder, self.baseOutputFolder, self.tempFolder]:
+            checkFolderData(folder)
+
+        envImportSuccess = self.validateDataFolders()
+
+        for outputFolder in self.outputFolders:
+            outputFolderPath = os.path.join(self.baseOutputFolder, self.outputFolders[outputFolder])
+            checkFolderData(outputFolderPath)
+
         if not envImportSuccess:
             sys.exit('Exiting due to configuration parameter import problems.')
         else:
             logging.info('All configuration parameters set up successfully.')
 
+    def setSaveDetails(self, fullName):
+        self.fullName = fullName
+        for outputFolder in self.outputFolders:
+            versionOutputFolderPath = os.path.join(self.baseOutputFolder, self.outputFolders[outputFolder], self.fullName)
+            checkFolderData(versionOutputFolderPath)
+        
+        filePath = os.path.join(self.baseDataFolder, self.dataFolders['CSV_DATA'], f'{self.courseName}criterion.csv')
+        self.critDescDF = pd.read_csv(filePath)
+        return True
+
     def saveTemplatePrompt(self):
-        with open(os.path.join(self.versionOutputFolder, f'{self.fullName}_templatePrompt.txt'), 'w') as textFile:
+        with open(os.path.join(self.baseOutputFolder, \
+                               self.outputFolders['PROMPT_FILES'], \
+                               self.fullName, \
+                               f'{self.fullName}_templatePrompt.txt'), 'w') as textFile:
             textFile.write(promptBuilder(saveTemplate=True, config=self))
         return True
 

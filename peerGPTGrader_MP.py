@@ -7,15 +7,14 @@ def main():
     config = Config()
     config.setFromEnv()
 
-    versionControl = 'V2'
+    versionControl = 'V3'
     promptVersion='P2'
     fullName = f'{versionControl}-{promptVersion}'
     config.setSaveDetails(fullName)
     config.saveTemplatePrompt()
 
     config.overWriteSave = False
-
-    config.simpleCourseName = 'Movement Science'
+    
     config.poolSize = 8
 
     rowDataList = getGRAData(config, mpMode=True)

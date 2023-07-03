@@ -1,13 +1,7 @@
 .ipynb_checkpoints
 .env
 .pep8speaks.yml
-CSV Data/
-Excel Dumps/
-Chart Dumps/
-Output/
-Submissions/
-Text Submissions/
-Supplemental Docs/
+data/
+output/
 temp/
-V1 Code/
-__pycache__
+__pycache__/
