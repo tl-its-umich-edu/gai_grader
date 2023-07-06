@@ -8,14 +8,15 @@ def main():
     config.setFromEnv()
 
     versionControl = 'V3'
-    promptVersion='P2'
+    promptVersion='P1'
     fullName = f'{versionControl}-{promptVersion}'
     config.setSaveDetails(fullName)
     config.saveTemplatePrompt()
 
     config.overWriteSave = False
-    
-    config.poolSize = 8
+    config.customDescMode = False
+
+    config.poolSize = 16
 
     rowDataList = getGRAData(config, mpMode=True)
 

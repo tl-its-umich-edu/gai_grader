@@ -46,16 +46,22 @@ def getGRAData(config, mpMode=False):
         return gradeRubricAssignmentDF
 
 
-def promptBuilder(promptVariablesDict=None, saveTemplate=False, config=None):
+def promptBuilder(promptVariablesDict=None, saveTemplate=False, config=None, useCustomDesc=True):
+    if useCustomDesc:
+        guideText = 'Each criteria has guidelines used to grade that will inform you on how to make penalties and leave feedback. Use the guidelines per criteria to assign a criteria score and feedback.'
+    else:
+        guideText = '''Each criterion has a description of the criteria used to grade, and a ratings guide of points that can be assigned which uses the format of <rating description> : <points>. \ 
+You must select the number of points to give the submission per criterion from the respective ratings guide.'''
+
     if saveTemplate:
         promptVariablesDict = {promptVariable:f'<<ENTER {promptVariable.upper()} HERE>>' for promptVariable in config.promptVariableNames}
 
     starterText = f'''You are a grader for the course "{promptVariablesDict['Course Name']}". 
 Your task is to grade a student's submission for the assignment "{promptVariablesDict['Assignment Name']}" using the provided criteria in the context of this course. 
 You will follow these specific rubric criteria to assign points related to different aspects of the assignment.
-The assignment's summary is "{promptVariablesDict['Assignment Description']}". 
-Each criteria has guidelines used to grade that will inform you on how to make penalties and leave feedback. Use the guidelines per criteria to assign a criteria score and feedback.
-The points assigned must lie between 0 and the max points as listed for each criteria.
+The assignment's summary is "{promptVariablesDict['Assignment Description']}".'''
+
+    criterionStartText = f'''The points assigned must lie between 0 and the max points as listed for each criteria.
 The student's submission is delimited by triple backticks.
 The criteria are:
 '''
@@ -70,7 +76,7 @@ Use the format:
 .
 .
 '''
-    fullText = starterText + promptVariablesDict['Criterion Description and Rubric'] + endText
+    fullText = starterText + guideText + criterionStartText + promptVariablesDict['Criterion Description and Rubric'] + endText
     return fullText
 
 def buildCritPrompt(criterionDF, useCustomDesc=True):
@@ -85,12 +91,16 @@ Max Points: '{cRow['points_rubric'] }', \
             ratingsTextList = [f'\t{rating["description"]} : {rating["points"]} points\n' 
                            for rating in cRow['ratings']]
             if cRow['long_description']:
-                criteriaText = f"{index+1}. Criterion Title: '{cRow['description_rubric']}', CriterionID: '{cRow['criterion_id'] }', \
-                    \nCriterion Description: '{cRow['long_description']}', \
-                    \nRatings Guide:\n"+''.join(ratingsTextList)
+                criteriaText = f"{index+1}. Criterion Title: '{cRow['description_rubric']}', \
+CriterionID: '{cRow['criterion_id'] }', \
+Max Points: '{cRow['points_rubric'] }', \
+\nCriterion Description: '{cRow['long_description']}', \
+\nRatings Guide:\n"+''.join(ratingsTextList)
             else:
-                criteriaText = f"{index+1}. Criterion Title: '{cRow['description_rubric']}', CriterionID: '{cRow['criterion_id'] }', \
-                        \nRatings Guide:\n"+''.join(ratingsTextList)
+                criteriaText = f"{index+1}. Criterion Title: '{cRow['description_rubric']}', \
+CriterionID: '{cRow['criterion_id'] }', \
+Max Points: '{cRow['points_rubric'] }', \
+\nRatings Guide:\n"+''.join(ratingsTextList)
         fullCritText += criteriaText
     return fullCritText
 
@@ -146,7 +156,7 @@ def getRowCriterionDF(row, config):
 
 def processTokenCount(row, config):        
     fullCriterionDF = getRowCriterionDF(row, config)
-    fullCritText = buildCritPrompt(fullCriterionDF, True)
+    fullCritText = buildCritPrompt(fullCriterionDF, useCustomDesc=config.customDescMode)
     studentSubmission = getSubmissionText(row['assignment_id'], row['submitter_id'], config)
 
     if studentSubmission:
@@ -158,7 +168,7 @@ def processTokenCount(row, config):
                             'Criterion Description and Rubric': fullCritText,
                             'Maximum Points': row['points_possible'],
                             }
-        fullPrompt = promptBuilder(promptVariableDict)
+        fullPrompt = promptBuilder(promptVariableDict, useCustomDesc=config.customDescMode)
         # print(fullPrompt)
         return fullPrompt
     else:
@@ -166,7 +176,7 @@ def processTokenCount(row, config):
 
 def processGRARow(row, config):        
     fullCriterionDF = getRowCriterionDF(row, config)
-    fullCritText = buildCritPrompt(fullCriterionDF, True)
+    fullCritText = buildCritPrompt(fullCriterionDF, useCustomDesc=config.customDescMode)
     studentSubmission = getSubmissionText(row['assignment_id'], row['submitter_id'], config)
 
     if studentSubmission:
@@ -178,11 +188,7 @@ def processGRARow(row, config):
                             'Criterion Description and Rubric': fullCritText,
                             'Maximum Points': row['points_possible'],
                             }
-        fullPrompt = promptBuilder(promptVariableDict)
-        # print(fullPrompt)
-        # with open(os.path.join(config.versionOutputFolder, f'{config.fullName}_exampleFilledPrompt.txt'), 'w') as textFile:
-        #     textFile.write(fullPrompt)
-        # print(x)
+        fullPrompt = promptBuilder(promptVariableDict, useCustomDesc=config.customDescMode)
        
         peerBot = peerGPT(config)
         response, responseSucess = peerBot.get_completion(fullPrompt)
@@ -222,7 +228,6 @@ def checkRunSaveMP(rowData):
     if checkIfSaved(rowData['row']['assignment_id'], rowData['row']['submitter_id'], rowData['config']) and not rowData['config'].overWriteSave:
         return False
     else:
-        time.sleep(default_rng().uniform(1,2))
         dataDict, runSuccess = processGRARow(rowData['row'], rowData['config'])
         saveOutputasPickle(dataDict, runSuccess, rowData['config'])
         return True
@@ -230,7 +235,7 @@ def checkRunSaveMP(rowData):
 def saveOutputasPickle(dataDict, runSuccess, config):
     saveName = f"{dataDict['assignment_id']}-{dataDict['submitter_id']}.p"
 
-    pickleFolder = 'saves' if runSuccess else 'error'
+    pickleFolder = 'saves' if runSuccess else 'errors'
     pickleSavePath = os.path.join(config.baseOutputFolder, \
                                     config.outputPickleLookup[pickleFolder], \
                                     config.fullName, \
@@ -316,6 +321,7 @@ class Config:
                     'Maximum Points',
                     ]
 
+        self.customDescMode = True
         self.overWriteSave: bool = False
         self.fullName: str = None
         self.critDescDF = None
@@ -425,7 +431,7 @@ class Config:
                                self.outputFolders['PROMPT_FILES'], \
                                self.fullName, \
                                f'{self.fullName}_templatePrompt.txt'), 'w') as textFile:
-            textFile.write(promptBuilder(saveTemplate=True, config=self))
+            textFile.write(promptBuilder(saveTemplate=True, config=self, useCustomDesc=self.customDescMode))
         return True
 
 
