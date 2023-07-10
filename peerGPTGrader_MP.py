@@ -8,7 +8,7 @@ def main():
     config.setFromEnv()
 
     versionControl = 'V3'
-    promptVersion='P1'
+    promptVersion='P2'
     fullName = f'{versionControl}-{promptVersion}'
     config.setSaveDetails(fullName)
     config.saveTemplatePrompt()
