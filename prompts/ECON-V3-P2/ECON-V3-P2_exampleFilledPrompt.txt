@@ -1,0 +1,75 @@
+You are a grader for the course "ECON". 
+Your task is to grade a student's submission for the assignment "Peer Reflection - Writing Assignment 1: Core Theory" using the provided criteria in the context of this course. 
+You will follow these specific rubric criteria to assign points related to different aspects of the assignment.Each criterion has a description of the criteria used to grade, and a ratings guide of points that can be assigned which uses the format of <rating description> : <points>. \ 
+You must select the number of points to give the submission per criterion from the respective ratings guide.The points assigned must lie between 0 and the max points as listed for each criteria.
+The student's submission is delimited by triple backticks.
+The criteria are:
+1. Criterion Title: 'Peer Essays Read', CriterionID: '_4269', Max Points: '6.0', 
+Ratings Guide:
+	Exceeds Expectations : 6.0 points
+	Meets Expectations : 5.0 points
+	Missing Elements : 3.0 points
+2. Criterion Title: 'Peer Feedback Received', CriterionID: '_5534', Max Points: '4.0', 
+Ratings Guide:
+	Exceeds Expectations : 4.0 points
+	Meets Expectations : 3.0 points
+	Missing Elements : 2.0 points
+The student submission is:
+```Peer Reflection
+
+I found the peer review process very helpful and I drew a lot of
+inspiration for revision by reviewing my peer’s work and reading their
+suggestions about my first draft.
+
+One takeaway from reading the first essay that I reviewed was that I did
+not add enough detail about the connection between an increase in supply
+of automation and the resulting decrease in demand for manual labor. I
+felt that this connection was explained in a more clear and concise way
+in my peer’s essay, making the connection between these supply and
+demand shifts easier for the candidate to understand. In my revised
+draft I would make sure to explain how automation and manual labor act
+as substitutes in consumption and how an increase in the supply of one
+substitute results in a decrease in the demand of the other.
+
+Another takeaway I got from the third essay I reviewed was that I failed
+to adequately consider the intended audience of this memo. My peer’s
+essay was far more focused and made sure to keep the audience in mind
+throughout their memo. This essay addressed the candidate directly and
+explained concepts in common terms that would be easy for a person who
+does not have an economics background to understand. In my revised draft
+I would make sure to edit my memo with the audience in mind, and take
+extra care to simplify any confusing or complicated concepts. By more
+clearly explaining economic concepts in common terms, I could make the
+memorandum more effective in informing the candidate of the labor market
+and its relation to the automation market.
+
+I received some great feedback from my peers, and one of the big notes
+that I would apply to my revised draft would be to simplify my
+explanations and write more concisely. My first and third reviewer both
+echoed the same sentiment that sections of my draft were too
+complicated, creating a lack of clarity and causing confusion. I have a
+tendency to get long-winded and lose focus in some of my sentences,
+which is detrimental in a short memorandum like this. This boils down to
+keeping the prompt and the end goal in mind while writing. In a 250-300
+word memorandum there is no space for extraneous sentences, so I would
+be sure to trim the fat in my revised draft and make sure each sentence
+has a purpose.
+
+A more specific piece of feedback that I would apply to my revised draft
+would be to explicitly state who the supplier is and who the consumer is
+in the labor market. My second peer reviewer pointed this out, and I
+think that it is a glaring mistake that I simply overlooked. I quickly
+brushed past this detail, and in doing so neglected a fundamental
+concept that the candidate needs to understand. Without this being
+explicitly stated, the candidate could be confused and as a result not
+gain much valuable insight from the rest of the memo. In my revised
+draft I would be sure to add a sentence explaining that the businesses
+are the consumers of labor and the workers are the suppliers.
+```
+For each criterion listed, return the assigned points, and feedback comment of under 100 words based on the criterion guidelines and errors made.
+Use the format:
+<criterion 1 ID> : <criterion 1 score> : <comment>
+<criterion 2 ID> : <criterion 2 score> : <comment>
+.
+.
+.

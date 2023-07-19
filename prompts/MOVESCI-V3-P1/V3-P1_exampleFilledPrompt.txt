@@ -1,0 +1,158 @@
+You are a grader for the course "Movement Science". 
+Your task is to grade a student's submission for the assignment "CS 1.8b MWrite #1: More Robust Data Collection of Human Gait [Revision & Reflection]" using the provided criteria in the context of this course. 
+You will follow these specific rubric criteria to assign points related to different aspects of the assignment.
+The assignment's summary is "This is an assignment for revising and reflecting on your writing. In your past assignment, you made a memo to provide recommendations for an experimental protocol that will reduce variability in the data collected during a campus-wide experiment to measure the gait speeds of U-M students. The three most important factors to standardize are: where the start/stop lines should be placed with respect to the gait mat, what instructions should be given to the student walkers before they walk over the gait mat, and the number of trials that should be collected for each included speed. The proposed protocol includes specific recommendations for each of these factors and an explanation of why these recommendations will reduce variability. You will need to make several changes to your response, at the sentence and paragraph level, by taking into consideration the feedback you received and deciding what content you should add, rewrite, or remove from your response. You will also need to explain your reasoning behind your changes. This should be separate from your memo but still on the same document. Summarize the edits you thought were appropriate to make to your writing piece based on the feedback from your peers, your Writing Fellow's comments, or feedback you've received during office hours. Identify areas in your revised memo that benefitted from reading and providing feedback on submissions from your peers. If you choose not to make a suggested change, provide a thorough and respectful rationale explaining why you declined to make the edit.".Each criterion has a description of the criteria used to grade, and a ratings guide of points that can be assigned which uses the format of <rating description> : <points>. \ 
+You must select the number of points to give the submission per criterion from the respective ratings guide.The points assigned must lie between 0 and the max points as listed for each criteria.
+The student's submission is delimited by triple backticks.
+The criteria are:
+1. Criterion Title: 'Factor 1: Start/Stop Lines', CriterionID: '_3457', Max Points: '3.0', 
+Criterion Description: 'Here we are looking for: 1) a specific recommendation for this factor; 2)  an explanation for why you have chosen the specific recommendation and 3) how you think the recommendation will reduce or “control” variability in data collection across the mini gait labs.', 
+Ratings Guide:
+	Complete : 3.0 points
+	Missing key element : 2.0 points
+	Missing two key elements : 1.0 points
+	No Marks : 0.0 points
+2. Criterion Title: 'Factor 2: Gait Speeds', CriterionID: '_2149', Max Points: '3.0', 
+Criterion Description: 'Here we are looking for: 1) a specific recommendation for this factor; 2) an explanation for why you have chosen the specific recommendation and 3) how you think the recommendation will reduce or “control” variability in data collection across the mini gait labs.', 
+Ratings Guide:
+	Complete : 3.0 points
+	Missing key element : 2.0 points
+	Missing 2+ key elements : 1.0 points
+	No Marks : 0.0 points
+3. Criterion Title: 'Factor 3: Number of Trials', CriterionID: '_7799', Max Points: '3.0', 
+Criterion Description: 'Here we are looking for: 1) a specific recommendation for this factor; 2) an explanation for why you have chosen the specific recommendation and 3) how you think the recommendation will reduce or “control” variability in data collection across the mini gait labs.', 
+Ratings Guide:
+	Complete : 3.0 points
+	Missing key element : 2.0 points
+	Missing 2+ key elements : 1.0 points
+	No Marks : 0.0 points
+4. Criterion Title: 'Format & Readability', CriterionID: '104689_7513', Max Points: '2.0', 
+Criterion Description: 'Is the response within the word limit and in general memo format? Is it understandable to the intended audience?', 
+Ratings Guide:
+	Full Marks : 2.0 points
+	Partial Credit : 1.0 points
+	No Marks : 0.0 points
+5. Criterion Title: 'Revision', CriterionID: '104689_4435', Max Points: '4.0', 
+Criterion Description: 'Revised submission has several changes that address feedback from peers and Writing Fellows', 
+Ratings Guide:
+	Full revision : 4.0 points
+	Partial Revision : 3.0 points
+	Minor Revision : 2.0 points
+	No Revision : 0.0 points
+6. Criterion Title: 'Reflection', CriterionID: '136344_3095', Max Points: '5.0', 
+Criterion Description: 'A summary of at least 150 words that addresses your edits and identifies areas in your memo that benefitted from reading and providing feedback on submissions from your peers.', 
+Ratings Guide:
+	Full Marks : 5.0 points
+	Partial Credit : 2.5 points
+	No Marks : 0.0 points
+The student submission is:
+```To: Movement Science Research Team
+
+From: Movement Science Student
+
+Date: February 12th, 2023
+
+Subject: Experimental Procedures of Gait Speed Data Collection
+
+In conducting this campus wide gait speed data collection, we are
+seeking very pertinent information: whether the ten-minute break between
+classes is sufficient for students to reach their classes in a timely
+manner while walking at their normal pace. It is therefore imperative to
+ensure that variability due to experimental procedures, in these gait
+speed collections, is as low as possible. With increased error, comes
+inaccurate and misleading results and analyses which will in turn affect
+the student body. If our data is not measured consistently, this will
+lead to the conclusion that the 10-minute break is either sufficient or
+not sufficient which will negatively affect the student body or the
+administration, respectively.
+
+In order to decrease the chance for error, we will provide a direct
+procedure with which to collect the gait speed data. The start and stop
+lines will be placed 12 feet before and after the start and stop of the
+gait mat, respectively. This will be used to allow each participant the
+appropriate time to accelerate and decelerate and to adapt to their
+normal walking pace during the trial. 12 feet was chosen because it
+represents an average and sufficient distance for participants to
+accelerate and decelerate without tiring them out. If you do not allow
+for this period to accelerate, then it will result in variable speeds on
+the gait mat as students will accelerate when walking on the actual gait
+mat. This might mean that the speed with which they walk on the gait mat
+will not be their normal pace. If the stop line were to be placed at the
+exact stop of the gait mat, then this might cause students to stop
+abruptly and not finish walking the entirety of the mat or to slow down,
+in anticipation of the end. Providing these stop and start lines will
+reduce variability as each student would have the appropriate time to
+“warm up” and “cool down” that will ensure that they’re gait speed while
+actually on the mat is neither too slow nor too fast. We want to ensure
+that we put these procedures in place so that we collect normal or
+comfortable walking paces from each student. Students should be using
+this pace when walking between classes and our measurements will provide
+the data for this.
+
+All students should be instructed to walk at a normal and constant pace,
+from the start line to the stop line. Students should be told to imagine
+that they are leisurely walking ~~to class~~ and not in a rush. If
+students are told this, then this may further push them to walk at their
+average pace. If we had told them to imagine walking ~~to class~~
+without the indication that they were not in any rush, then, as typical
+students, they may speed walk. Other factors such as height affect
+normal gait speed so the normal pace of one student may differ from that
+of another. Since we will have a random sample of students, these
+differences will likely cancel themselves out so providing instructions
+to walk at a normal pace is important. These instructions will thus
+reduce variability because each student will be walking at their own,
+normal pace. This is also important for our study because we want to
+ensure that there is sufficient time between classes for students to
+walk at a normal pace and not speed-walk or run. We are trying to
+collect average walking speed so instructing them to do so will further
+reduce variability.
+
+Lastly, each student will perform this action ~~three~~ five times. The
+first trial will act as a test-run, in that students will practice
+walking on the gait mat and getting used to it. The subsequent next four
+trials will be used for the actual data collection and an average will
+be computed of the four. The reason for including a test trial is so
+that if students make errors, get nervous, or walk too fast or too slow,
+we will be able to repeat the previous instructions to them for the next
+trials. Four data collection trials are important because more trials
+induce less variability and error. It is important that each student
+complete the same number of trials so that there is less variability
+between each student. With an adequate number of trials, the reliability
+of the data will increase, specifically the test-retest reliability, in
+which subsequent trials are compared to one another for similarity. When
+reliability increases, as does validity which will in turn decrease
+potential errors and variability. We will not include more than five
+total, however, because we do not want to tire out the students.
+
+Thank you for taking the time to read and follow the instructions above.
+They are pertinent to ensure as little variability in our measurements
+as possible.
+
+Reflection: In the start/stop lines section, based on the feedback from
+my peers and the memos I evaluated myself, I added a reasoning for why
+12 feet before and after was specifically chosen. This was because 12
+feet (~3m) represents an average distance for individuals to accelerate
+and decelerate. I also took the writing fellow’s suggestions into
+account: I removed the instructions to “imagine that they are walking to
+class” because not everyone walks at the same pace or even their normal
+pace to class. Instead, I took out the portion about walking to class
+and added that they should walk at a constant pace as well which would
+further decrease variability because they would not be speeding up or
+slowing down. I also swapped out the word “normal” for “average” which
+introduces another speed descriptor that the students can aim for. I
+also indicated other factors that can affect one’s normal gait speed –
+height – and explained that since we have a random sample if everyone is
+given the same instructions to walk at their normal pace then the speeds
+will average out. Finally, based on my peer reviews, it was recommended
+to include more trials for adequate data and less variability. As the
+writing fellow mentioned, I further connected the number of trials to
+variability and explained that it increased test-retest reliability and
+thus lowered variability.
+```
+For each criterion listed, return the assigned points, and feedback comment of under 100 words based on the criterion guidelines and errors made.
+Use the format:
+<criterion 1 ID> : <criterion 1 score> : <comment>
+<criterion 2 ID> : <criterion 2 score> : <comment>
+.
+.
+.

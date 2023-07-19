@@ -23,20 +23,32 @@ def getGRAData(config, mpMode=False):
     for dataFileName in ['assignments', 'gradings', 'rubrics']:
         fullFileName = f'{config.courseName}{dataFileName}.csv'
         filePath = os.path.join(config.baseDataFolder, config.dataFolders['CSV_DATA'], fullFileName)
-        dataDF = pd.read_csv(filePath)
+        dataDF = pd.read_csv(filePath).drop_duplicates()
         dataDFs[dataFileName] = dataDF
 
+    dataDFs['gradings'] = dataDFs['gradings'][dataDFs['gradings']['assessment_type']=='grading']
     dataDFs['gradings']['data'] = dataDFs['gradings']['data'].apply(lambda dataJSON: json.loads(dataJSON))
     dataDFs['rubrics']['data'] = dataDFs['rubrics']['data'].apply(lambda dataJSON: json.loads(dataJSON))
 
-    gradeRubricDF = dataDFs['gradings'].merge(dataDFs['rubrics'], on='rubric_id', suffixes=('_grade', '_rubric'))
-    gradeRubricAssignmentDF = gradeRubricDF.merge(dataDFs['assignments'], on='assignment_id', 
+    if 'cleaned_description' not in dataDFs['assignments']:
+        logging.warn('Column "cleaned_description" not found in assignments csv file. No assignment descriptions will be used.')
+        dataDFs['assignments']['cleaned_description'] = ''
+
+    if 'file_submission_source' in dataDFs['assignments']:
+        logging.info('Found custom assignment submission pointers.')
+        dataDFs['assignments']['file_submission_source'] = dataDFs['assignments']['file_submission_source'].astype('Int64').fillna(-1)
+    else:
+        dataDFs['assignments']['file_submission_source'] = dataDFs['assignments']['assignment_id'].astype('Int64').fillna(-1)
+    
+    gradeRubricDF = dataDFs['gradings'].merge(dataDFs['rubrics'], on='rubric_id', \
+                                              suffixes=('_grade', '_rubric'))
+    gradeRubricAssignmentDF = gradeRubricDF.merge(dataDFs['assignments'], on='assignment_id', \
                                                   suffixes=('', '_assignment'))
 
     gradeRubricAssignmentDF = gradeRubricAssignmentDF[['submitter_id', 'grader_id', 'score', 'rubric_id', 
                                                        'assignment_id', 'assignment_title', 'data_grade', 
-                                                       'data_rubric', 'points_possible', 
-                                                       'assignment_description', 'cleaned_description']]
+                                                       'data_rubric', 'points_possible', 'assignment_description', 
+                                                       'cleaned_description', 'file_submission_source']]
     if mpMode:
         rowDataList = []
         for index, row in gradeRubricAssignmentDF.iterrows():
@@ -47,19 +59,24 @@ def getGRAData(config, mpMode=False):
 
 
 def promptBuilder(promptVariablesDict=None, saveTemplate=False, config=None, useCustomDesc=True):
-    if useCustomDesc:
-        guideText = 'Each criteria has guidelines used to grade that will inform you on how to make penalties and leave feedback. Use the guidelines per criteria to assign a criteria score and feedback.'
-    else:
-        guideText = '''Each criterion has a description of the criteria used to grade, and a ratings guide of points that can be assigned which uses the format of <rating description> : <points>. \ 
-You must select the number of points to give the submission per criterion from the respective ratings guide.'''
-
     if saveTemplate:
         promptVariablesDict = {promptVariable:f'<<ENTER {promptVariable.upper()} HERE>>' for promptVariable in config.promptVariableNames}
 
     starterText = f'''You are a grader for the course "{promptVariablesDict['Course Name']}". 
 Your task is to grade a student's submission for the assignment "{promptVariablesDict['Assignment Name']}" using the provided criteria in the context of this course. 
-You will follow these specific rubric criteria to assign points related to different aspects of the assignment.
-The assignment's summary is "{promptVariablesDict['Assignment Description']}".'''
+You will follow these specific rubric criteria to assign points related to different aspects of the assignment.'''
+
+    if promptVariablesDict['Assignment Description']:
+        assgnSummaryText = f"The assignment's summary is \"{promptVariablesDict['Assignment Description']}\"."
+    else:
+        assgnSummaryText = ''
+    
+    if useCustomDesc:
+        guideText = '''Each criteria has guidelines used to grade that will inform you on how to make penalties and leave feedback. 
+Use the guidelines per criteria to assign a criteria score and feedback.'''
+    else:
+        guideText = '''Each criterion has a description of the criteria used to grade, and a ratings guide of points for reference which uses the format of <rating description> : <points>. 
+Use the ratings guide to assign points between 0 and the max points as listed for each criteria.'''
 
     criterionStartText = f'''The points assigned must lie between 0 and the max points as listed for each criteria.
 The student's submission is delimited by triple backticks.
@@ -76,7 +93,7 @@ Use the format:
 .
 .
 '''
-    fullText = starterText + guideText + criterionStartText + promptVariablesDict['Criterion Description and Rubric'] + endText
+    fullText = starterText + assgnSummaryText + guideText + criterionStartText + promptVariablesDict['Criterion Description and Rubric'] + endText
     return fullText
 
 def buildCritPrompt(criterionDF, useCustomDesc=True):
@@ -87,21 +104,26 @@ def buildCritPrompt(criterionDF, useCustomDesc=True):
 CriterionID: '{cRow['criterion_id'] }', \
 Max Points: '{cRow['points_rubric'] }', \
 \nCriterion Guidelines: {cRow['custom_description']}\n"
+            
         else:
             ratingsTextList = [f'\t{rating["description"]} : {rating["points"]} points\n' 
                            for rating in cRow['ratings']]
+            
             if cRow['long_description']:
                 criteriaText = f"{index+1}. Criterion Title: '{cRow['description_rubric']}', \
 CriterionID: '{cRow['criterion_id'] }', \
 Max Points: '{cRow['points_rubric'] }', \
 \nCriterion Description: '{cRow['long_description']}', \
 \nRatings Guide:\n"+''.join(ratingsTextList)
+                
             else:
                 criteriaText = f"{index+1}. Criterion Title: '{cRow['description_rubric']}', \
 CriterionID: '{cRow['criterion_id'] }', \
 Max Points: '{cRow['points_rubric'] }', \
 \nRatings Guide:\n"+''.join(ratingsTextList)
+                
         fullCritText += criteriaText
+
     return fullCritText
 
 def processResponse(responseText):
@@ -117,18 +139,24 @@ def processResponse(responseText):
             critScores[-1]['peerGPT_reason'] += line
     return pd.DataFrame(critScores)
 
-def getSubmissionText(assignmentID, userID, config):
-    submissionFilePath = os.path.join(config.baseDataFolder, \
-                                      config.dataFolders['TEXT_SUBMISSIONS'], \
-                                        f'{assignmentID}', f'{userID}.txt')
-    if os.path.exists(submissionFilePath):
-        with open(submissionFilePath) as textFile:
-            submissionLines = textFile.readlines()
-        studentSubmission = ''.join([line.strip() if line!='\n' else '\n' for line in submissionLines])
-        studentSubmission = studentSubmission.replace('\n\n', '\n')
-        return studentSubmission
+def getSubmissionText(assignmentID, userID, fileSource, config):
+    if fileSource != -1:
+        submissionFilePath = os.path.join(config.baseDataFolder, \
+                                        config.dataFolders['TEXT_SUBMISSIONS'], \
+                                            f'{fileSource}', f'{userID}.txt')
+        if os.path.exists(submissionFilePath):
+            try:
+                with open(submissionFilePath, errors="ignore") as textFile:
+                    submissionLines = textFile.readlines()
+                studentSubmission = ''.join([line.strip() if line!='\n' else '\n' for line in submissionLines])
+                studentSubmission = studentSubmission.replace('\n\n', '\n')
+                return True, studentSubmission
+            except Exception as e:
+                return 'Could not open the file', False
+        else:
+            return 'Submission file missing.', False
     else:
-        return False
+        return 'Not a gradable assignment', False
 
 def checkIfSaved(assignmentID, userID, config):
     saveName = f"{assignmentID}-{userID}.p"
@@ -144,26 +172,36 @@ def checkIfSaved(assignmentID, userID, config):
 def getRowCriterionDF(row, config):
     gradeDataDF = pd.DataFrame(row['data_grade'])
     rubricDataDF = pd.DataFrame(row['data_rubric'])
-    descDataDF = config.critDescDF[config.critDescDF['assignment_id']==row['assignment_id']][['custom_description', 'id']]
 
     fullCriterionDF = gradeDataDF.merge(rubricDataDF, left_on='criterion_id', 
                                         right_on='id', suffixes=('_grade', '_rubric'))
-    fullCriterionDF = fullCriterionDF.merge(descDataDF, left_on='criterion_id', right_on='id')
-    fullCriterionDF = fullCriterionDF.drop(['id_grade', 'id_rubric', 'learning_outcome_id', 'id',
+
+    if config.customDescMode:
+        descDataDF = config.critDescDF[config.critDescDF['assignment_id']==row['assignment_id']]
+        descDataDF = descDataDF[['custom_description', 'id']]
+        fullCriterionDF = fullCriterionDF.merge(descDataDF, left_on='criterion_id', right_on='id')
+
+    if 'points' not in gradeDataDF.columns:
+        fullCriterionDF['points_rubric'] = fullCriterionDF['points']
+        fullCriterionDF['points_gradec'] = fullCriterionDF['points']
+
+    fullCriterionDF = fullCriterionDF.drop(['id_grade', 'id_rubric', 'learning_outcome_id', 'id', 'points'
                                             'comments_enabled', 'comments_html', 'criterion_use_range'], 
                                             axis=1, errors='ignore') 
+    # fullCriterionDF = fullCriterionDF.rename(columns={'points':})
     return fullCriterionDF
 
 def processTokenCount(row, config):        
     fullCriterionDF = getRowCriterionDF(row, config)
     fullCritText = buildCritPrompt(fullCriterionDF, useCustomDesc=config.customDescMode)
-    studentSubmission = getSubmissionText(row['assignment_id'], row['submitter_id'], config)
+    studentSubmissionStatus, studentSubmission = getSubmissionText(row['assignment_id'], row['submitter_id'], row['file_submission_source'], config)
 
     if studentSubmission:
         promptVariableDict = {
                             'Course Name': config.simpleCourseName,
                             'Assignment Name': row['assignment_title'],
-                            'Assignment Description': row['cleaned_description'],
+                            'Assignment Description': row['cleaned_description'] \
+                                                        if row['cleaned_description'] else None,
                             'Student Submission': studentSubmission,
                             'Criterion Description and Rubric': fullCritText,
                             'Maximum Points': row['points_possible'],
@@ -177,13 +215,14 @@ def processTokenCount(row, config):
 def processGRARow(row, config):        
     fullCriterionDF = getRowCriterionDF(row, config)
     fullCritText = buildCritPrompt(fullCriterionDF, useCustomDesc=config.customDescMode)
-    studentSubmission = getSubmissionText(row['assignment_id'], row['submitter_id'], config)
-
+    studentSubmissionStatus, studentSubmission = getSubmissionText(row['assignment_id'], row['submitter_id'], row['file_submission_source'], config)
+    
     if studentSubmission:
         promptVariableDict = {
                             'Course Name': config.simpleCourseName,
                             'Assignment Name': row['assignment_title'],
-                            'Assignment Description': row['cleaned_description'],
+                            'Assignment Description': row['cleaned_description'] \
+                                                        if row['cleaned_description'] else None,
                             'Student Submission': studentSubmission,
                             'Criterion Description and Rubric': fullCritText,
                             'Maximum Points': row['points_possible'],
@@ -214,7 +253,7 @@ def processGRARow(row, config):
                     'Error':response}, False
     else:
         return {'assignment_id':row['assignment_id'], 'submitter_id':row['submitter_id'], 
-                'Error':'Submission File Missing.'}, False
+                'Error':studentSubmissionStatus}, False
     
 def checkRunSave(row, config):
     if checkIfSaved(row['assignment_id'], row['submitter_id'], config) and not config.overWriteSave:
@@ -286,6 +325,7 @@ class Config:
         self.baseDataFolder: str = 'data'
         self.baseOutputFolder: str = 'output'
         self.tempFolder: str = 'temp'
+        self.promptFolder: str = 'prompts'
 
         self.dataFolders: dict = {
                                 'SUBMISSIONS':'Submissions',
@@ -309,9 +349,14 @@ class Config:
         
         self.CSVDataFiles = ['criterion', 'assignments', 'gradings', 'rubrics']
 
-        self.courseName: str = 'MOVESCI_110_WN_2023_584988_MWrite_'
-        self.simpleCourseName: str = 'Movement Science'
-
+        self.courseNameLookup: dict = {
+                                'MOVESCI': 'MOVESCI_110_WN_2023_584988_MWrite_', \
+                                'ECON': 'ECON_101_300_WN_2023_566636_', \
+                                }
+        
+        self.courseName: str = None
+        self.simpleCourseName: str = None
+        
         self.promptVariableNames = [
                     'Course Name',
                     'Assignment Name',
@@ -402,7 +447,7 @@ class Config:
             'SIMPLE_COURSE_NAME', self.simpleCourseName, str)
         envImportSuccess = False if not self.simpleCourseName or not envImportSuccess else True
 
-        for folder in [self.baseDataFolder, self.baseOutputFolder, self.tempFolder]:
+        for folder in [self.baseDataFolder, self.baseOutputFolder, self.tempFolder, self.promptFolder]:
             checkFolderData(folder)
 
         envImportSuccess = self.validateDataFolders()
@@ -418,12 +463,19 @@ class Config:
 
     def setSaveDetails(self, fullName):
         self.fullName = fullName
+        self.simpleCourseName = self.fullName.split('-')[0]
+        self.courseName = self.courseNameLookup[self.simpleCourseName]
         for outputFolder in self.outputFolders:
-            versionOutputFolderPath = os.path.join(self.baseOutputFolder, self.outputFolders[outputFolder], self.fullName)
+            versionOutputFolderPath = os.path.join(self.baseOutputFolder, \
+                                                   self.outputFolders[outputFolder], \
+                                                   self.fullName)
             checkFolderData(versionOutputFolderPath)
         
-        filePath = os.path.join(self.baseDataFolder, self.dataFolders['CSV_DATA'], f'{self.courseName}criterion.csv')
-        self.critDescDF = pd.read_csv(filePath)
+        if self.customDescMode:
+            filePath = os.path.join(self.baseDataFolder, \
+                                    self.dataFolders['CSV_DATA'], \
+                                    f'{self.courseName}criterion.csv')
+            self.critDescDF = pd.read_csv(filePath)
         return True
 
     def saveTemplatePrompt(self):
@@ -460,7 +512,8 @@ class peerGPT:
                 response = openai.ChatCompletion.create(
                     engine=self.engineName,
                     messages=messages,
-                    temperature=0
+                    temperature=0,
+                    # timeout=60,
                 )
                 time.sleep(1)
                 callComplete = True

@@ -8,18 +8,22 @@ def main():
     config.setFromEnv()
 
     versionControl = 'V3'
-    promptVersion='P2'
-    fullName = f'{versionControl}-{promptVersion}'
-    config.setSaveDetails(fullName)
-    config.saveTemplatePrompt()
-
+    promptVersion='P3'
+    simpleCourseName = 'ECON'
+    fullName = f'{simpleCourseName}-{versionControl}-{promptVersion}'
+    
     config.overWriteSave = False
     config.customDescMode = False
+
+    config.setSaveDetails(fullName)
+    config.saveTemplatePrompt()
 
     config.poolSize = 16
 
     rowDataList = getGRAData(config, mpMode=True)
 
+    # for rowData in rowDataList:
+    #     checkRunSaveMP(rowData)
     pool = Pool(config.poolSize)
     pool.imap(checkRunSaveMP, rowDataList)
     pool.close()
