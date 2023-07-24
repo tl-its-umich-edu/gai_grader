@@ -14,10 +14,12 @@ criterionCommonCols = ['points_grade', 'criterion_id', 'description_grade', 'com
                        'description_rubric', 'points_rubric', 'custom_description', \
                        'submitter_id', 'assignment_id', 'grader_id']
 
+# Generates a joint plot to visualize the spread of scores given by graders compared to the peerGPT scores. 
+# The resulting plot is saved as 'JointPlot.png' in the specified chartFolder.
 def getScoreSpread(resultsDF, chartFolder):
     sns.set_theme(style="whitegrid", palette="deep")
 
-    filterDF = resultsDF#[resultsDF['assignment_id']!=1916709]
+    filterDF = resultsDF
     maxScore = resultsDF['points_possible'].max()
     assgnCount = len(resultsDF['assignment_id'].unique())
     sns.jointplot(data=filterDF, x='score', y='peerGPT_score', hue='assignment_id', height=5, marker=".", s=50, palette=sns.color_palette()[:assgnCount])
@@ -32,6 +34,9 @@ def getScoreSpread(resultsDF, chartFolder):
     # plt.close()
     return True
 
+# UNUSED FUNCTION
+# Processes the data from the 'data_peerGPT' column in the resultsDF DataFrame and saves the extracted criterion data to an Excel file named 'saveName-CriterionData.xlsx'. 
+# The original resultsDF DataFrame is saved to another Excel file named 'saveName-ScoreData.xlsx'.
 def getCriterionDataDF(resultsDF, saveName, excelFolder):
     mergedCriterionData = pd.DataFrame()
     for index,row in resultsDF.iterrows():
@@ -47,6 +52,371 @@ def getCriterionDataDF(resultsDF, saveName, excelFolder):
     saveDF.to_excel(os.path.join(excelFolder, saveName+'-ScoreData.xlsx'))
     
     return mergedCriterionData
+
+# Calculates the mean difference between graders' scores and peerGPT scores. 
+# It saves the mean difference and the percentage difference in two separate Excel files.
+def saveGraderPeerGPTMeanScoreDiff(resultsDF, saveName, excelFolder):
+    excludeDF = resultsDF.copy()
+    excludeDF['Score Difference'] = excludeDF['peerGPT_score']-excludeDF['score']
+    excludeDF['Score Diff. %'] = 100*(excludeDF['peerGPT_score']-excludeDF['score'])/excludeDF['points_possible']
+
+    meanDiffDict = {}
+    meanDiffPercentDict = {}
+    for group in excludeDF.groupby(['grader_id','assignment_id']):
+        if group[0][0] not in meanDiffDict:
+            meanDiffDict[group[0][0]] = {}
+            meanDiffPercentDict[group[0][0]] = {}
+        meanDiffDict[group[0][0]][group[0][1]] = group[1]["Score Difference"].mean()
+        meanDiffPercentDict[group[0][0]][group[0][1]] = np.round(group[1]["Score Diff. %"].mean() , 2)
+    meanDiffDF = pd.DataFrame(meanDiffDict)
+    meanDiffPercentDF = pd.DataFrame(meanDiffPercentDict)
+
+    print(f"Saving file at: {os.path.join(excelFolder, saveName+' - Grader - peerGPT Score Difference.xlsx')}")
+    meanDiffDF.to_excel(os.path.join(excelFolder, saveName+' - Grader - peerGPT Score Difference.xlsx'))
+
+    print(f"Saving file at: {os.path.join(excelFolder, saveName+' - Grader - peerGPT Score Diff. %.xlsx')}")
+    meanDiffPercentDF.to_excel(os.path.join(excelFolder, saveName+' - Grader - peerGPT Score Diff. %.xlsx'))
+    return meanDiffDF, meanDiffPercentDF
+
+# Builds a DataFrame fullInfoDF containing information about grader and peerGPT scores' mean and std. dev. for each criterion and assignment. 
+# It also calculates the mean difference and percentage difference between the two.
+def buildFullInfoDF(config, resultsDF, saveName, excelFolder):
+    GRADataDF = getGRAData(config)
+    critDataDF = pd.DataFrame()
+    for index,row in resultsDF.iterrows():
+        criterionData = row['data_peerGPT']
+        for col in ['submitter_id', 'assignment_id', 'grader_id']:
+            criterionData[col] = row[col]
+        critDataDF = pd.concat([critDataDF, criterionData])
+    allCritDF = critDataDF.drop(['mastery_points','ignore_for_scoring','title','peerGPT_criterion_id','description_grade'],
+                            axis=1, errors='ignore')
+
+    meanInfoList = []
+    for group in allCritDF.groupby(['assignment_id','criterion_id','grader_id']):
+        meanInfoList.append({'assignment_id':group[0][0], 'criterion_id':group[0][1], 'grader_id':group[0][2], \
+                            'Grader Mean':group[1]['points_grade'].mean(), \
+                            'Grader Std. Dev.':group[1]['points_grade'].std(), \
+                            'peerGPT Mean':group[1]['peerGPT_criterion_score'].mean(), \
+                            'peerGPT Std. Dev.':group[1]['peerGPT_criterion_score'].std(), \
+                            # 'Correlation Score':group[1]['peerGPT_criterion_score'].corr(group[1]['points_grade']), \
+                            })
+    meanInfoDF = pd.DataFrame(meanInfoList)
+    meanInfoDF['Mean Difference'] = meanInfoDF['peerGPT Mean'] - meanInfoDF['Grader Mean']
+
+    assignmentDF = GRADataDF[['assignment_id', 'assignment_title']].drop_duplicates()
+    baseInfoDF = allCritDF[['assignment_id', 'criterion_id', 'description_rubric', 'points_rubric']].drop_duplicates()
+    baseInfoDF = baseInfoDF.merge(assignmentDF, on='assignment_id')
+
+    globalMeanList = [{'assignment_id':group[0][0], 'criterion_id':group[0][1], \
+                    'All Graders Mean':group[1]['points_grade'].mean(), \
+                    'All Graders Std. Dev.':group[1]['points_grade'].std(), \
+                    'Global peerGPT Mean':group[1]['peerGPT_criterion_score'].mean(), \
+                    'Global peerGPT Std. Dev.':group[1]['peerGPT_criterion_score'].std()} \
+                        for group in allCritDF.groupby(['assignment_id', 'criterion_id'])]
+    globalMeanDF = pd.DataFrame(globalMeanList)
+    baseInfoDF = baseInfoDF.merge(globalMeanDF, on=['assignment_id', 'criterion_id'])
+
+    fullInfoDF = meanInfoDF.merge(baseInfoDF, on=['assignment_id', 'criterion_id'])
+    fullInfoDF['Mean Difference %'] = 100*fullInfoDF['Mean Difference'].div(fullInfoDF['points_rubric'])
+
+    fullInfoDF['Grader Mean Diff. %'] = 100*(fullInfoDF['All Graders Mean'] - fullInfoDF['Grader Mean']).div(fullInfoDF['points_rubric'])
+
+    print(f"Saving file at: {os.path.join(excelFolder, saveName+' - Grader Difference Table.xlsx')}")
+    fullInfoDF.to_excel(os.path.join(excelFolder, saveName+' - Grader Difference Table.xlsx'))
+
+    rubricInfo = GRADataDF[['assignment_id', 'data_rubric']].drop_duplicates('assignment_id').reset_index(drop=True)
+    rubricOrderDict = {}
+    for index, row in rubricInfo.iterrows():
+        rubricOrderDict[row['assignment_id']] = pd.DataFrame(row['data_rubric'])['description'].tolist()
+
+    return fullInfoDF, rubricOrderDict
+
+
+# Generates Z-Score and Confidence Interval info for all graders against themselves and GraderGPT.
+def getZScoreAndCI(fullInfoDF, saveName, excelFolder, confidence=0.93):
+    zScoreGraderList, zScoreGPTList = [], []
+    CIGraderList, CIGPTList = [], []
+
+    for AID in fullInfoDF['assignment_id'].unique():
+        for CID in fullInfoDF[(fullInfoDF['assignment_id']==AID)]['criterion_id'].unique(): 
+            subsetDF =  fullInfoDF[(fullInfoDF['assignment_id']==AID) & (fullInfoDF['criterion_id']==CID)]
+            zScoresGrader = list(scipy.stats.zscore(subsetDF['Grader Mean Diff. %']))
+            zScoresGPT = list(scipy.stats.zscore(subsetDF['Mean Difference %']))
+            zScoreGraderList += zScoresGrader
+            zScoreGPTList += zScoresGPT
+
+            meanGraderDiffDict = dict(zip(subsetDF['grader_id'].tolist(),subsetDF['Grader Mean Diff. %'].tolist()))
+            meanGPTDiffDict = dict(zip(subsetDF['grader_id'].tolist(),subsetDF['Mean Difference %'].tolist()))
+
+            lowerGrader,upperGrader = confindenceInterval(list(meanGraderDiffDict.values()), confidence)
+            lowerGPT,upperGPT = confindenceInterval(list(meanGPTDiffDict.values()), confidence)
+            for grader in meanGraderDiffDict:
+                if meanGraderDiffDict[grader]<lowerGrader or meanGraderDiffDict[grader]>upperGrader:
+                    CIGraderList.append('Out of CI')
+                else:
+                    CIGraderList.append('Within CI')
+                
+                if meanGPTDiffDict[grader]<lowerGPT or meanGPTDiffDict[grader]>upperGPT:
+                    CIGPTList.append('Out of CI')
+                else:
+                    CIGPTList.append('Within CI')
+
+    ZScoreInfoDF = fullInfoDF.copy()
+    ZScoreInfoDF['Z-Score against GraderGPT'] = zScoreGPTList
+    ZScoreInfoDF['Z-Score b/w Graders'] = zScoreGraderList
+    
+    ZScoreInfoDF[f'CI using GraderGPT with Confidence={confidence}'] = CIGPTList
+    ZScoreInfoDF[f'CI using Graders with Confidence={confidence}'] = CIGraderList
+    
+    ZScoreInfoDF = ZScoreInfoDF.drop(['Mean Difference', 'Grader Std. Dev.', 'peerGPT Std. Dev.', 'All Graders Std. Dev.', 'Global peerGPT Std. Dev.'], axis=1)
+    ZScoreInfoDF = ZScoreInfoDF.rename(columns={'Mean Difference %':'Mean Diff. % against GraderGPT', \
+                                            'Grader Mean Diff. %':'Mean Diff. % b/w Graders', \
+                                            'peerGPT Mean':'GraderGPT Mean', \
+                                            'assignment_title':'Title', \
+                                            'description_rubric':'Rubric', \
+                                            'points_rubric':'Max Score'}).reset_index(drop=True)
+    ZScoreInfoDF = ZScoreInfoDF.set_index(['assignment_id', 'Title', 'criterion_id', 'Rubric', 
+                                        'All Graders Mean', 'Global peerGPT Mean', 'Max Score',
+                                        'grader_id'])
+    
+    print(f"Saving file at: {os.path.join(excelFolder, saveName+f' - Z-Score & CI@{confidence} Details.xlsx')}")
+    ZScoreInfoDF.to_excel(os.path.join(excelFolder, saveName+f' - Z-Score & CI@{confidence} Details.xlsx'))
+    
+    return ZScoreInfoDF
+
+
+# Generates strip plots to visualize the percentage mean difference between grader scores and peerGPT scores for each criterion. 
+# The plots are saved in a folder named 'Mean Diff %' within the specified chartFolder.
+def getMeanDiffPercentCharts(fullInfoDF, rubricOrderDict, chartFolder):
+    sns.set_theme(style="darkgrid") #, palette="dark")
+    saveMeanFolder = os.path.join(chartFolder, 'Mean Diff %')
+    if not os.path.exists(saveMeanFolder):
+        os.mkdir(saveMeanFolder)
+
+    for AID in fullInfoDF['assignment_id'].unique():
+        subsetDF =  fullInfoDF[fullInfoDF['assignment_id']==AID]
+        plt.clf() 
+
+        graderCount = len(subsetDF['grader_id'].unique())
+
+        upperY = math.ceil(max(subsetDF['Mean Difference %']))
+        lowerY = math.floor(min(subsetDF['Mean Difference %']))
+        if upperY<0:
+            upperY = 0
+        if lowerY>0:
+            lowerY = 0
+        if upperY-lowerY>160:
+            tickStep = 10
+        else:
+            tickStep = 5
+        if lowerY<0 and upperY>0:
+            tickSpace = np.concatenate((np.arange(lowerY-lowerY%tickStep,0, tickStep),np.arange(0,upperY+upperY%tickStep+5, tickStep)))
+        else:
+            tickSpace = np.arange(lowerY,upperY+10, tickStep)
+
+        sns.set(rc={'figure.figsize':((3/2)*len(rubricOrderDict[AID]),3)})
+
+        g = sns.stripplot(data=subsetDF, x='description_rubric', y='Mean Difference %', \
+                            order = rubricOrderDict[AID], \
+                            hue='grader_id', dodge=False, jitter=True, \
+                            palette=sns.color_palette(n_colors=graderCount)[:graderCount])
+        
+        plt.axhline(y=0, color='#313232', linestyle='--')
+
+        g.set_ylim(lowerY-5,upperY+5)
+        g.set_yticks(tickSpace)
+        g.set_xlabel('Criteria', fontsize=12)
+        g.set_ylabel('Mean Difference %', fontsize=12, rotation=90)
+
+        g.set_xticks(g.get_xticks())
+
+        wrapSize = 14 if len(rubricOrderDict[AID]) < 6 else 12 
+        g.set_xticklabels([textwrap.fill(t.get_text(), wrapSize, break_long_words=False) \
+                           for t in g.get_xticklabels()], size=9)
+
+        g.set_title(textwrap.fill(subsetDF['assignment_title'].iloc[0], 50))
+
+        plt.legend(bbox_to_anchor=(1.01, 1), loc='upper left', borderaxespad=0, title='Grader ID')
+        # plt.show()
+        g.get_figure().savefig(os.path.join(saveMeanFolder, f'{AID}-MeanDiffSpread.png'), dpi=300, bbox_inches='tight')
+        plt.close()
+    return True
+
+def confindenceInterval(data, confidence=0.9):
+    a = 1.0 * np.array(data)
+    n = len(a)
+    m, se = np.mean(a), scipy.stats.sem(a)
+    h = se * scipy.stats.t.ppf((1 + confidence) / 2., n-1)
+    return m-h, m+h
+
+# Calculates the confidence interval for the mean difference percentage between grader scores and peerGPT scores. 
+# It then identifies and saves grader details that fall outside the specified confidence level in an Excel file.
+def getCIOutlierGraderDetails(fullInfoDF, saveName, excelFolder, confidenceLevel=0.93, testType='graderGPT'):
+    confidenceList = np.arange(0.85,1, 0.01)
+    confidenceDataDict = {}
+
+    if testType=='graderGPT':
+        colToUse = 'Mean Difference %'
+    if testType=='graders':
+        colToUse = 'Grader Mean Diff. %'
+
+    for confidence in confidenceList:
+        outsideCIDF = pd.DataFrame()
+        for AID in fullInfoDF['assignment_id'].unique():
+            for CID in fullInfoDF[(fullInfoDF['assignment_id']==AID)]['criterion_id'].unique(): 
+                subsetDF =  fullInfoDF[(fullInfoDF['assignment_id']==AID) & (fullInfoDF['criterion_id']==CID)]
+                meanDiffDict = dict(zip(subsetDF['grader_id'].tolist(),subsetDF[colToUse].tolist()))
+                lower,upper = confindenceInterval(list(meanDiffDict.values()), confidence)
+                for grader in meanDiffDict:
+                    if meanDiffDict[grader]<lower or meanDiffDict[grader]>upper:
+                        # display(subsetDF[subsetDF['grader_id']==grader])
+                        outsideCIDF = pd.concat([outsideCIDF,subsetDF[subsetDF['grader_id']==grader]])
+
+        if np.round(confidence,4)==confidenceLevel:
+            # display(outsideCIDF)
+            print(f"Saving file at: {os.path.join(excelFolder, saveName+f' - Outliers at {confidenceLevel} Conf. Level.xlsx')}")
+            outsideCIDF.to_excel(os.path.join(excelFolder, saveName+f' - Outliers at {confidenceLevel} Conf. Level.xlsx'))
+            retrievedCIDF = outsideCIDF.copy()
+
+        if not outsideCIDF.empty:
+            confidenceDataDict[np.round(confidence, 2)] = outsideCIDF['grader_id'].value_counts().to_dict()
+        else:
+            break
+
+    meanConDF = pd.DataFrame(confidenceDataDict).sort_index()
+    print(f"Saving file at: {os.path.join(excelFolder, saveName+'-'+testType+' - Confidence in Mean Diff % Table.xlsx')}")
+    meanConDF.to_excel(os.path.join(excelFolder, saveName+'-'+testType+' - Confidence in Mean Diff % Table.xlsx'))
+
+    return meanConDF, retrievedCIDF
+
+#  Identifies criteria with high error rates (mean difference percentage above a threshold) and saves the details in an Excel file.
+def getHighErrorCriteria(config, fullInfoDF, saveName, excelFolder, scoreThreshold = 10):
+    pd.set_option('display.precision', 2)
+
+    criteriaIssuesDF = pd.DataFrame()
+    for AID in fullInfoDF['assignment_id'].unique():
+        for CID in fullInfoDF[(fullInfoDF['assignment_id']==AID)]['criterion_id'].unique(): 
+            subsetDF =  fullInfoDF[(fullInfoDF['assignment_id']==AID) \
+                                   & (fullInfoDF['criterion_id']==CID)]
+            if subsetDF['Mean Difference %'].mean() > scoreThreshold:
+                issueDF = subsetDF[['assignment_id', 'criterion_id', \
+                                    'assignment_title', 'description_rubric', \
+                                    'points_rubric', 'All Graders Mean', \
+                                    'Global peerGPT Mean']].drop_duplicates()
+                issueDF['Mean Difference %'] = subsetDF['Mean Difference %'].mean()
+                criteriaIssuesDF = pd.concat([criteriaIssuesDF, issueDF])
+
+    if config.customDescMode:
+        descDataDF = config.critDescDF[['custom_description', 'assignment_id', 'id']]
+        criteriaIssuesDF = criteriaIssuesDF.merge(descDataDF, left_on=['assignment_id', 'criterion_id'], \
+                                            right_on=['assignment_id', 'id'])
+        del criteriaIssuesDF['id']
+
+    criteriaIssuesDF = criteriaIssuesDF.rename(columns={'assignment_title':'Title', \
+                                                        'custom_description':'Supplemental Description', \
+                                                        'description_rubric':'Rubric', \
+                                                        'points_rubric':'Max Score'}).reset_index(drop=True)
+    
+    print(f"Saving file at: {os.path.join(excelFolder, saveName+' - High Error Criteria.xlsx')}")
+    criteriaIssuesDF.to_excel(os.path.join(excelFolder, saveName+' - High Error Criteria.xlsx'))
+
+    return criteriaIssuesDF
+
+# ---------------------------------------------------------------------------------------------------------------
+# Functions that are not used or need further debugging done to be compatible
+
+def setUpPostProcessVars(versionControl='V3', promptVersion='P2', simpleCourseName='MOVESCI'):
+    varsDict = {varName:None for varName in ['config', 'saveName', \
+                                             'chartFolder', 'excelFolder', \
+                                             'resultsDF', 'errorDF', \
+                                             'fullInfoDF', 'rubricOrderDict']}
+
+    varsDict['config'] = Config()
+    varsDict['config'].setFromEnv()
+    varsDict['config'].simpleCourseName = simpleCourseName
+    varsDict['saveName'] = f"{varsDict['config'].simpleCourseName}-{versionControl}-{promptVersion}"
+
+    varsDict['config'].setSaveDetails(varsDict['saveName'])
+
+    varsDict['chartFolder'] = os.path.join(varsDict['config'].baseOutputFolder, \
+                               varsDict['config'].outputFolders['CHART_OUTPUT'], \
+                               varsDict['config'].fullName)
+
+    varsDict['excelFolder'] = os.path.join(varsDict['config'].baseOutputFolder, \
+                               varsDict['config'].outputFolders['EXCEL_OUTPUT'], \
+                               varsDict['config'].fullName)
+    
+    varsDict['resultsDF'] = convertPicklesToDF('saves', varsDict['config'])
+    varsDict['errorDF'] = convertPicklesToDF('errors', varsDict['config'])
+    varsDict['fullInfoDF'], varsDict['rubricOrderDict'] = buildFullInfoDF(varsDict['config'], \
+                                                                          varsDict['resultsDF'], \
+                                                                          varsDict['saveName'], \
+                                                                          varsDict['excelFolder'])
+    
+    return varsDict
+
+
+def buildComparerFullInfoDF(config, compareResultsDF, saveName, excelFolder):
+    critDataDF = pd.DataFrame()
+    for index,row in compareResultsDF.iterrows():
+        criterionData_P1 = row['data_peerGPT_P1']
+        criterionData_P2 = row['data_peerGPT_P2']
+
+        mergedCriterionData = criterionData_P1.merge(criterionData_P2, on=criterionCommonCols, \
+                                                    how='inner', suffixes=('_P1', '_P2'))
+        critDataDF = pd.concat([critDataDF, mergedCriterionData])
+    
+    for dataCol in critDataDF:
+        for colName in ['mastery_points', 'ignore_for_scoring', 'title', \
+                        'peerGPT_criterion_id', 'description_grade']:
+            if dataCol.startswith(colName):
+                critDataDF = critDataDF.drop(columns=[dataCol])
+
+    meanInfoList = []
+    for group in critDataDF.groupby(['assignment_id','criterion_id','grader_id']):
+        meanInfoList.append({'assignment_id':group[0][0], 'criterion_id':group[0][1], 'grader_id':group[0][2], \
+                            'Grader Mean':group[1]['points_grade'].mean(), \
+                            'Grader Std. Dev.':group[1]['points_grade'].std(), \
+                            'peerGPT Mean P1':group[1]['peerGPT_criterion_score_P1'].mean(), \
+                            'peerGPT P1 Std. Dev. P1':group[1]['peerGPT_criterion_score_P1'].std(), \
+                            'Correlation Score P2':group[1]['peerGPT_criterion_score_P1'].corr(group[1]['points_grade']), \
+                            'peerGPT Mean P2':group[1]['peerGPT_criterion_score_P2'].mean(), \
+                            'peerGPT Std. Dev. P2':group[1]['peerGPT_criterion_score_P2'].std(), \
+                            'Correlation Score P2':group[1]['peerGPT_criterion_score_P2'].corr(group[1]['points_grade'])})
+    meanInfoDF = pd.DataFrame(meanInfoList)
+    meanInfoDF['Mean Difference P1'] = meanInfoDF['peerGPT Mean P1'] - meanInfoDF['Grader Mean']
+    meanInfoDF['Mean Difference P2'] = meanInfoDF['peerGPT Mean P2'] - meanInfoDF['Grader Mean']
+
+    assignmentDF = getGRAData(config)[['assignment_id', 'assignment_title']].drop_duplicates()
+    baseInfoDF = critDataDF[['assignment_id', 'criterion_id', 'description_rubric', 'points_rubric']].drop_duplicates()
+    baseInfoDF = baseInfoDF.merge(assignmentDF, on='assignment_id')
+
+    globalMeanList = [{'assignment_id':group[0][0], 'criterion_id':group[0][1], \
+                    'All Graders Mean':group[1]['points_grade'].mean(), \
+                    'All Graders Std. Dev.':group[1]['points_grade'].std(), \
+                    'Global peerGPT Mean P1':group[1]['peerGPT_criterion_score_P1'].mean(), \
+                    'Global peerGPT Std. Dev. P1':group[1]['peerGPT_criterion_score_P1'].std(), \
+                    'Global peerGPT Mean P2':group[1]['peerGPT_criterion_score_P2'].mean(), \
+                    'Global peerGPT Std. Dev. P2':group[1]['peerGPT_criterion_score_P2'].std()} \
+                        for group in critDataDF.groupby(['assignment_id', 'criterion_id'])]
+    globalMeanDF = pd.DataFrame(globalMeanList)
+    baseInfoDF = baseInfoDF.merge(globalMeanDF, on=['assignment_id', 'criterion_id'])
+
+    fullInfoDF = meanInfoDF.merge(baseInfoDF, on=['assignment_id', 'criterion_id'])
+    fullInfoDF['Mean Difference % P1'] = 100*fullInfoDF['Mean Difference P1'].div(fullInfoDF['points_rubric'])
+    fullInfoDF['Mean Difference % P2'] = 100*fullInfoDF['Mean Difference P2'].div(fullInfoDF['points_rubric'])
+
+    fullInfoDF.to_excel(os.path.join(excelFolder, saveName+' - Grader Difference Table.xlsx'))
+
+    rubricInfo = getGRAData(config)[['assignment_id', 'data_rubric']]\
+                    .drop_duplicates('assignment_id')\
+                    .reset_index(drop=True)
+    rubricOrderDict = {}
+    for index, row in rubricInfo.iterrows():
+        rubricOrderDict[row['assignment_id']] = pd.DataFrame(row['data_rubric'])['description'].tolist()
+
+    fullInfoDF.to_excel(os.path.join(excelFolder, saveName+' - Grader Difference Table.xlsx'))
+    return fullInfoDF, rubricOrderDict
 
 def getFullHistogramSpread(resultsDF, chartFolder):
     sns.set_theme(style="darkgrid", palette="dark")
@@ -100,6 +470,7 @@ def getFullHistogramSpread(resultsDF, chartFolder):
                         size='large', ha='right', va='center', rotation=90)
 
     # plt.show()
+    print(f"Saving file at: {os.path.join(chartFolder, 'HistogramPlotSpread.png')}")
     plt.savefig(os.path.join(chartFolder, 'HistogramPlotSpread.png'), dpi=300, bbox_inches='tight')
     plt.close()
     return True
@@ -285,65 +656,9 @@ def getScatterplotSpreadByAssgn(resultsDF, chartFolder, outlierFactor = 0.15):
         plt.close()
     return True
 
-def saveGraderPeerGPTMeanScoreDiff(resultsDF, saveName, excelFolder):
-    excludeDF = resultsDF.copy()
-    excludeDF['Score Difference'] = excludeDF['peerGPT_score']-excludeDF['score']
 
-    meanDiffDict = {}
-    for group in excludeDF.groupby(['grader_id','assignment_id']):
-        if group[0][0] not in meanDiffDict:
-            meanDiffDict[group[0][0]] = {}
-        meanDiffDict[group[0][0]][group[0][1]] = group[1]["Score Difference"].mean()
-    meanDiffDF = pd.DataFrame(meanDiffDict)
-    meanDiffDF.to_excel(os.path.join(excelFolder, saveName+' - Grader - peerGPT Score Difference.xlsx'))
-    return meanDiffDF
-
-def buildFullInfoDF(config, resultsDF, saveName, excelFolder):
-    critDataDF = pd.DataFrame()
-    for index,row in resultsDF.iterrows():
-        criterionData = row['data_peerGPT']
-        for col in ['submitter_id', 'assignment_id', 'grader_id']:
-            criterionData[col] = row[col]
-        critDataDF = pd.concat([critDataDF, criterionData])
-    allCritDF = critDataDF.drop(['mastery_points','ignore_for_scoring','title','peerGPT_criterion_id','description_grade'],
-                            axis=1, errors='ignore')
-
-    meanInfoList = []
-    for group in allCritDF.groupby(['assignment_id','criterion_id','grader_id']):
-        meanInfoList.append({'assignment_id':group[0][0], 'criterion_id':group[0][1], 'grader_id':group[0][2], \
-                            'Grader Mean':group[1]['points_grade'].mean(), \
-                            'Grader Std. Dev.':group[1]['points_grade'].std(), \
-                            'peerGPT Mean':group[1]['peerGPT_criterion_score'].mean(), \
-                            'peerGPT Std. Dev.':group[1]['peerGPT_criterion_score'].std(), \
-                            'Correlation Score':group[1]['peerGPT_criterion_score'].corr(group[1]['points_grade'])})
-    meanInfoDF = pd.DataFrame(meanInfoList)
-    meanInfoDF['Mean Difference'] = meanInfoDF['peerGPT Mean'] - meanInfoDF['Grader Mean']
-
-    assignmentDF = getGRAData(config)[['assignment_id', 'assignment_title']].drop_duplicates()
-    baseInfoDF = allCritDF[['assignment_id', 'criterion_id', 'description_rubric', 'points_rubric']].drop_duplicates()
-    baseInfoDF = baseInfoDF.merge(assignmentDF, on='assignment_id')
-
-    globalMeanList = [{'assignment_id':group[0][0], 'criterion_id':group[0][1], \
-                    'All Graders Mean':group[1]['points_grade'].mean(), \
-                    'All Graders Std. Dev.':group[1]['points_grade'].std(), \
-                    'Global peerGPT Mean':group[1]['peerGPT_criterion_score'].mean(), \
-                    'Global peerGPT Std. Dev.':group[1]['peerGPT_criterion_score'].std()} \
-                        for group in allCritDF.groupby(['assignment_id', 'criterion_id'])]
-    globalMeanDF = pd.DataFrame(globalMeanList)
-    baseInfoDF = baseInfoDF.merge(globalMeanDF, on=['assignment_id', 'criterion_id'])
-
-    fullInfoDF = meanInfoDF.merge(baseInfoDF, on=['assignment_id', 'criterion_id'])
-    fullInfoDF['Mean Difference %'] = 100*fullInfoDF['Mean Difference'].div(fullInfoDF['points_rubric']) 
-
-    fullInfoDF.to_excel(os.path.join(excelFolder, saveName+' - Grader Difference Table.xlsx'))
-
-    rubricInfo = getGRAData(config)[['assignment_id', 'data_rubric']].drop_duplicates('assignment_id').reset_index(drop=True)
-    rubricOrderDict = {}
-    for index, row in rubricInfo.iterrows():
-        rubricOrderDict[row['assignment_id']] = pd.DataFrame(row['data_rubric'])['description'].tolist()
-
-    return fullInfoDF, rubricOrderDict
-
+# Generates strip plots to visualize the mean difference between grader scores and peerGPT scores for each criterion. 
+# The plots are saved in a folder named 'Mean Difference Charts' within the specified chartFolder.
 def getMeanDiffCharts(fullInfoDF, rubricOrderDict, chartFolder):
     sns.set_theme(style="darkgrid") #, palette="dark")
     saveMeanFolder = os.path.join(chartFolder, 'Mean Difference Charts')
@@ -397,217 +712,3 @@ def getMeanDiffCharts(fullInfoDF, rubricOrderDict, chartFolder):
                                dpi=300, bbox_inches='tight')
         plt.close()
     return True
-
-def getMeanDiffPercentCharts(fullInfoDF, rubricOrderDict, chartFolder):
-    sns.set_theme(style="darkgrid") #, palette="dark")
-    saveMeanFolder = os.path.join(chartFolder, 'Mean Diff %')
-    if not os.path.exists(saveMeanFolder):
-        os.mkdir(saveMeanFolder)
-
-    for AID in fullInfoDF['assignment_id'].unique():
-        subsetDF =  fullInfoDF[fullInfoDF['assignment_id']==AID]
-        plt.clf() 
-
-        graderCount = len(subsetDF['grader_id'].unique())
-
-        upperY = math.ceil(max(subsetDF['Mean Difference %']))
-        lowerY = math.floor(min(subsetDF['Mean Difference %']))
-        if upperY<0:
-            upperY = 0
-        if lowerY>0:
-            lowerY = 0
-        if upperY-lowerY>160:
-            tickStep = 10
-        else:
-            tickStep = 5
-        if lowerY<0 and upperY>0:
-            tickSpace = np.concatenate((np.arange(lowerY-lowerY%tickStep,0, tickStep),np.arange(0,upperY+upperY%tickStep+5, tickStep)))
-        else:
-            tickSpace = np.arange(lowerY,upperY+10, tickStep)
-
-        sns.set(rc={'figure.figsize':((3/2)*len(rubricOrderDict[AID]),3)})
-
-        g = sns.stripplot(data=subsetDF, x='description_rubric', y='Mean Difference %', \
-                            order = rubricOrderDict[AID], \
-                            hue='grader_id', dodge=False, jitter=True, \
-                            palette=sns.color_palette(n_colors=graderCount)[:graderCount])
-        
-        plt.axhline(y=0, color='#313232', linestyle='--')
-
-        g.set_ylim(lowerY-5,upperY+5)
-        g.set_yticks(tickSpace)
-        g.set_xlabel('Criteria', fontsize=12)
-        g.set_ylabel('Mean Difference %', fontsize=12, rotation=90)
-
-        g.set_xticks(g.get_xticks())
-
-        wrapSize = 14 if len(rubricOrderDict[AID]) < 6 else 12 
-        g.set_xticklabels([textwrap.fill(t.get_text(), wrapSize, break_long_words=False) \
-                           for t in g.get_xticklabels()], size=9)
-
-        g.set_title(textwrap.fill(subsetDF['assignment_title'].iloc[0], 50))
-
-        plt.legend(bbox_to_anchor=(1.01, 1), loc='upper left', borderaxespad=0, title='Grader ID')
-        # plt.show()
-        g.get_figure().savefig(os.path.join(saveMeanFolder, f'{AID}-MeanDiffSpread.png'), dpi=300, bbox_inches='tight')
-        plt.close()
-    return True
-
-def confindenceInterval(data, confidence=0.9):
-    a = 1.0 * np.array(data)
-    n = len(a)
-    m, se = np.mean(a), scipy.stats.sem(a)
-    h = se * scipy.stats.t.ppf((1 + confidence) / 2., n-1)
-    return m-h, m+h
-
-def getCIOutlierGraderDetails(fullInfoDF, saveName, excelFolder, confidenceLevel=0.93):
-    confidenceList = np.arange(0.85,1, 0.01)
-    confidenceDataDict = {}
-
-    for confidence in confidenceList:
-        outsideCIDF = pd.DataFrame()
-        for AID in fullInfoDF['assignment_id'].unique():
-            for CID in fullInfoDF[(fullInfoDF['assignment_id']==AID)]['criterion_id'].unique(): 
-                subsetDF =  fullInfoDF[(fullInfoDF['assignment_id']==AID) & (fullInfoDF['criterion_id']==CID)]
-                meanDiffDict = dict(zip(subsetDF['grader_id'].tolist(),subsetDF['Mean Difference %'].tolist()))
-                lower,upper = confindenceInterval(list(meanDiffDict.values()), confidence)
-                for grader in meanDiffDict:
-                    if meanDiffDict[grader]<lower or meanDiffDict[grader]>upper:
-                        # display(subsetDF[subsetDF['grader_id']==grader])
-                        outsideCIDF = pd.concat([outsideCIDF,subsetDF[subsetDF['grader_id']==grader]])
-
-        if np.round(confidence,4)==confidenceLevel:
-            # display(outsideCIDF)
-            outsideCIDF.to_excel(os.path.join(excelFolder, saveName+f' - Outliers at {confidenceLevel} Conf. Level.xlsx'))
-            retrievedCIDF = outsideCIDF.copy()
-        if not outsideCIDF.empty:
-            confidenceDataDict[np.round(confidence, 2)] = outsideCIDF['grader_id'].value_counts().to_dict()
-        else:
-            break
-
-    meanConDF = pd.DataFrame(confidenceDataDict).sort_index()
-    meanConDF.to_excel(os.path.join(excelFolder, saveName+' - Confidence in Mean Diff % Table.xlsx'))
-
-    return meanConDF, retrievedCIDF
-
-def getHighErrorCriteria(config, fullInfoDF, saveName, excelFolder, scoreThreshold = 10):
-    pd.set_option('display.precision', 2)
-
-    descDataDF = config.critDescDF[['custom_description', 'assignment_id', 'id']]
-    criteriaIssuesDF = pd.DataFrame()
-    for AID in fullInfoDF['assignment_id'].unique():
-        for CID in fullInfoDF[(fullInfoDF['assignment_id']==AID)]['criterion_id'].unique(): 
-            subsetDF =  fullInfoDF[(fullInfoDF['assignment_id']==AID) \
-                                   & (fullInfoDF['criterion_id']==CID)]
-            if subsetDF['Mean Difference %'].mean() > scoreThreshold:
-                issueDF = subsetDF[['assignment_id', 'criterion_id', \
-                                    'assignment_title', 'description_rubric', \
-                                    'points_rubric', 'All Graders Mean', \
-                                    'Global peerGPT Mean']].drop_duplicates()
-                issueDF['Mean Difference %'] = subsetDF['Mean Difference %'].mean()
-                criteriaIssuesDF = pd.concat([criteriaIssuesDF, issueDF])
-
-    criteriaIssuesDF = criteriaIssuesDF.merge(descDataDF, left_on=['assignment_id', 'criterion_id'], \
-                                            right_on=['assignment_id', 'id'])
-    del criteriaIssuesDF['id']
-    criteriaIssuesDF = criteriaIssuesDF.rename(columns={'assignment_title':'Title', \
-                                                        'custom_description':'Supplemental Description', \
-                                                        'description_rubric':'Rubric', \
-                                                        'points_rubric':'Max Score'}).reset_index(drop=True)
-    criteriaIssuesDF.to_excel(os.path.join(excelFolder, saveName+' - High Error Criteria.xlsx'))
-
-    return criteriaIssuesDF
-
-
-def setUpPostProcessVars(versionControl='V3', promptVersion='P2', simpleCourseName='MOVESCI'):
-    varsDict = {varName:None for varName in ['config', 'saveName', \
-                                             'chartFolder', 'excelFolder', \
-                                             'resultsDF', 'errorDF', \
-                                             'fullInfoDF', 'rubricOrderDict']}
-
-    varsDict['config'] = Config()
-    varsDict['config'].setFromEnv()
-    varsDict['config'].simpleCourseName = simpleCourseName
-    varsDict['saveName'] = f"{varsDict['config'].simpleCourseName}-{versionControl}-{promptVersion}"
-
-    varsDict['config'].setSaveDetails(varsDict['saveName'])
-
-    varsDict['chartFolder'] = os.path.join(varsDict['config'].baseOutputFolder, \
-                               varsDict['config'].outputFolders['CHART_OUTPUT'], \
-                               varsDict['config'].fullName)
-
-    varsDict['excelFolder'] = os.path.join(varsDict['config'].baseOutputFolder, \
-                               varsDict['config'].outputFolders['EXCEL_OUTPUT'], \
-                               varsDict['config'].fullName)
-    
-    varsDict['resultsDF'] = convertPicklesToDF('saves', varsDict['config'])
-    varsDict['errorDF'] = convertPicklesToDF('errors', varsDict['config'])
-    varsDict['fullInfoDF'], varsDict['rubricOrderDict'] = buildFullInfoDF(varsDict['config'], \
-                                                                          varsDict['resultsDF'], \
-                                                                          varsDict['saveName'], \
-                                                                          varsDict['excelFolder'])
-    
-    return varsDict
-
-
-def buildComparerFullInfoDF(config, compareResultsDF, saveName, excelFolder):
-    critDataDF = pd.DataFrame()
-    for index,row in compareResultsDF.iterrows():
-        criterionData_P1 = row['data_peerGPT_P1']
-        criterionData_P2 = row['data_peerGPT_P2']
-
-        mergedCriterionData = criterionData_P1.merge(criterionData_P2, on=criterionCommonCols, \
-                                                    how='inner', suffixes=('_P1', '_P2'))
-        critDataDF = pd.concat([critDataDF, mergedCriterionData])
-    
-    for dataCol in critDataDF:
-        for colName in ['mastery_points', 'ignore_for_scoring', 'title', \
-                        'peerGPT_criterion_id', 'description_grade']:
-            if dataCol.startswith(colName):
-                critDataDF = critDataDF.drop(columns=[dataCol])
-
-    meanInfoList = []
-    for group in critDataDF.groupby(['assignment_id','criterion_id','grader_id']):
-        meanInfoList.append({'assignment_id':group[0][0], 'criterion_id':group[0][1], 'grader_id':group[0][2], \
-                            'Grader Mean':group[1]['points_grade'].mean(), \
-                            'Grader Std. Dev.':group[1]['points_grade'].std(), \
-                            'peerGPT Mean P1':group[1]['peerGPT_criterion_score_P1'].mean(), \
-                            'peerGPT P1 Std. Dev. P1':group[1]['peerGPT_criterion_score_P1'].std(), \
-                            'Correlation Score P2':group[1]['peerGPT_criterion_score_P1'].corr(group[1]['points_grade']), \
-                            'peerGPT Mean P2':group[1]['peerGPT_criterion_score_P2'].mean(), \
-                            'peerGPT Std. Dev. P2':group[1]['peerGPT_criterion_score_P2'].std(), \
-                            'Correlation Score P2':group[1]['peerGPT_criterion_score_P2'].corr(group[1]['points_grade'])})
-    meanInfoDF = pd.DataFrame(meanInfoList)
-    meanInfoDF['Mean Difference P1'] = meanInfoDF['peerGPT Mean P1'] - meanInfoDF['Grader Mean']
-    meanInfoDF['Mean Difference P2'] = meanInfoDF['peerGPT Mean P2'] - meanInfoDF['Grader Mean']
-
-    assignmentDF = getGRAData(config)[['assignment_id', 'assignment_title']].drop_duplicates()
-    baseInfoDF = critDataDF[['assignment_id', 'criterion_id', 'description_rubric', 'points_rubric']].drop_duplicates()
-    baseInfoDF = baseInfoDF.merge(assignmentDF, on='assignment_id')
-
-    globalMeanList = [{'assignment_id':group[0][0], 'criterion_id':group[0][1], \
-                    'All Graders Mean':group[1]['points_grade'].mean(), \
-                    'All Graders Std. Dev.':group[1]['points_grade'].std(), \
-                    'Global peerGPT Mean P1':group[1]['peerGPT_criterion_score_P1'].mean(), \
-                    'Global peerGPT Std. Dev. P1':group[1]['peerGPT_criterion_score_P1'].std(), \
-                    'Global peerGPT Mean P2':group[1]['peerGPT_criterion_score_P2'].mean(), \
-                    'Global peerGPT Std. Dev. P2':group[1]['peerGPT_criterion_score_P2'].std()} \
-                        for group in critDataDF.groupby(['assignment_id', 'criterion_id'])]
-    globalMeanDF = pd.DataFrame(globalMeanList)
-    baseInfoDF = baseInfoDF.merge(globalMeanDF, on=['assignment_id', 'criterion_id'])
-
-    fullInfoDF = meanInfoDF.merge(baseInfoDF, on=['assignment_id', 'criterion_id'])
-    fullInfoDF['Mean Difference % P1'] = 100*fullInfoDF['Mean Difference P1'].div(fullInfoDF['points_rubric'])
-    fullInfoDF['Mean Difference % P2'] = 100*fullInfoDF['Mean Difference P2'].div(fullInfoDF['points_rubric'])
-
-    fullInfoDF.to_excel(os.path.join(excelFolder, saveName+' - Grader Difference Table.xlsx'))
-
-    rubricInfo = getGRAData(config)[['assignment_id', 'data_rubric']]\
-                    .drop_duplicates('assignment_id')\
-                    .reset_index(drop=True)
-    rubricOrderDict = {}
-    for index, row in rubricInfo.iterrows():
-        rubricOrderDict[row['assignment_id']] = pd.DataFrame(row['data_rubric'])['description'].tolist()
-
-    fullInfoDF.to_excel(os.path.join(excelFolder, saveName+' - Grader Difference Table.xlsx'))
-    return fullInfoDF, rubricOrderDict
