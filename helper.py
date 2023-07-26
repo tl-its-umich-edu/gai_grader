@@ -510,6 +510,8 @@ class Config:
         if configParams:
             self.fullName = configParams['Save Name']
             self.courseShorthand = self.fullName.split('-')[0]
+            self.versionControl = self.fullName.split('-')[1]
+            self.promptVersion = self.fullName.split('-')[2]
             self.courseName = self.courseNameLookup[self.courseShorthand]
             self.overWriteSave = configParams['Overwrite Saves']
             self.customDescMode = configParams['Use Custom Desc.']
