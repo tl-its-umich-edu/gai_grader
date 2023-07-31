@@ -33,14 +33,18 @@ Some variables can be overridden from the `.env` file while running the notebook
    > Make a new key, and copy the key for use in accessing the API.  
 (If using the Azure UM endpoint, please ref ____ for steps)
 
-2. Use the `.env.sample` in the config folder to create an `.env` file in the root of the directory. 
+2. Use `requirements.txt` to install the needed Python libraries for running all the scripts.
+Run the command: 
+   > pip install -r requirements.txt
+
+3. Use the `.env.sample` in the config folder to create an `.env` file in the root of the directory. 
    > Specify the API key for OpenAI using the key you copied in step 2.
    <!-- > Specify the settings for DB key using values from the `database-research_ro.json` file. -->
 Note: You need to have these keys, there are no default values.
 
-3. Adjust variables in the `.env` file before running if not applying defaults.
+4. Adjust variables in the `.env` file before running if not applying defaults.
 
-4. You need to provide a set of different files for the code to work in the folder 'data', primarily being the 'CSV Data' and 'Submissions'.  
+5. You need to provide a set of different files for the code to work in the folder 'data', primarily being the 'CSV Data' and 'Submissions'.  
    a. CSV Data:  
    > You need to provide 3 files from Canvas, containing assignment, grading, and rubric data.  
    > Each file name has a prefix that Canvas generates, that follows a format: `(name)\_(3/4 digit code)\_(2 letters for term)\_(year)\_(courseID)\_`  

@@ -8,14 +8,14 @@ def main():
     config.setFromEnv()
 
     # Option to use custom variables here.
-    # versionControl = 'V3'
-    # promptVersion = 'P4'
-    # courseShorthand = 'ECON'
+    # versionControl = 'V1'
+    # promptVersion = 'P1'
+    # courseShorthand = 'MOVESCI'
 
     # customConfigParams = {
     #                 'Save Name':f'{courseShorthand}-{versionControl}-{promptVersion}', 
     #                 'Overwrite Saves': False, 
-    #                 'Use Custom Desc.':False
+    #                 'Use Custom Desc.': True
     #                 }
     # config.setSaveDetails(customConfigParams)
 

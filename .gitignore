@@ -4,5 +4,6 @@
 data/
 output/
 temp/
+prompts/
 __pycache__/
 peerGPTGrader_Comparer.ipynb
