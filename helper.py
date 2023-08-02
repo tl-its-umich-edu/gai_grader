@@ -65,21 +65,21 @@ def promptBuilder(promptVariablesDict=None, saveTemplate=False, config=None, use
 
     starterText = f'''You are a grader for the course "{promptVariablesDict['Course Name']}". 
 Your task is to grade a student's submission for the assignment "{promptVariablesDict['Assignment Name']}" using the provided criteria in the context of this course. 
-You will follow these specific rubric criteria to assign points related to different aspects of the assignment.'''
+You will follow these specific rubric criteria to assign points related to different aspects of the assignment. '''
 
     if promptVariablesDict['Assignment Description']:
-        assgnSummaryText = f"The assignment's summary is \"{promptVariablesDict['Assignment Description']}\"."
+        assgnSummaryText = f"The assignment's summary is \"{promptVariablesDict['Assignment Description']}\". "
     else:
         assgnSummaryText = ''
     
     if useCustomDesc:
-        guideText = '''Each criteria has guidelines used to grade that will inform you on how to make penalties and leave feedback. 
-Use the guidelines per criteria to assign a criteria score and feedback.'''
+        guideText = '''Each criterion has guidelines used to grade that will inform you on how to make penalties and leave feedback. 
+Use the guidelines per criteria to assign a criteria score and feedback. '''
     else:
         guideText = '''Each criterion has a description of the criteria used to grade, and a ratings guide of points for reference which uses the format of <rating description> : <points>. 
-Use the ratings guide to assign points between 0 and the max points as listed for each criteria.'''
+Use the ratings guide to assign points between 0 and the max points listed for each criteria. '''
 
-    criterionStartText = f'''The points assigned must lie between 0 and the max points as listed for each criteria.
+    criterionStartText = f'''The points assigned must lie between 0 and the max points as listed for each criterion.
 The student's submission is delimited by triple backticks.
 The criteria are:
 '''
