@@ -37,6 +37,8 @@ Some variables can be overridden from the `.env` file while running the notebook
 Run the command: 
    > pip install -r requirements.txt
 
+Based on your operating system, you also need to install pandoc, following instructions from here: https://pandoc.org/installing.html
+
 3. Use the `.env.sample` in the config folder to create an `.env` file in the root of the directory. 
    > Specify the API key for OpenAI using the key you copied in step 2.
    <!-- > Specify the settings for DB key using values from the `database-research_ro.json` file. -->
