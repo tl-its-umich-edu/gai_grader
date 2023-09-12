@@ -329,6 +329,7 @@ def checkFolderData(folderPath):
     elif not len(os.listdir(folderPath)):
         dataExists = False
     elif len(os.listdir(folderPath))==1 and '.DS_Store' in os.listdir(folderPath)[0]:
+        # print('Skipping Mac DS_Store folder.')
         dataExists = False
 
     return folderExists, dataExists
