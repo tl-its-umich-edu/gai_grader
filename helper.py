@@ -306,6 +306,9 @@ def convertPicklesToDF(folderName, config):
                                 config.outputPickleLookup[folderName], \
                                 config.fullName)
     for savedPickle in os.listdir(pickleFolder):
+        if '.DS_Store' in savedPickle:
+            # print('Skipping Mac DS_Store folder.')
+            continue
         rowSaveData = pickle.load(open(os.path.join(pickleFolder, savedPickle), 'rb'))
         # if folderName=='saves':
         #     if 'peerGPT_criterion_score' in rowSaveData['data_peerGPT']:
@@ -324,6 +327,8 @@ def checkFolderData(folderPath):
         folderExists = False
         dataExists = False
     elif not len(os.listdir(folderPath)):
+        dataExists = False
+    elif len(os.listdir(folderPath))==1 and '.DS_Store' in os.listdir(folderPath)[0]:
         dataExists = False
 
     return folderExists, dataExists
