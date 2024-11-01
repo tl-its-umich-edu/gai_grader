@@ -4,7 +4,8 @@ from pdf2docx  import parse
 import pandas as pd
 import numpy as np
 import json
-from openai import OpenAI, AzureOpenAI
+import openai
+#from openai import AzureOpenAI
 import os
 from dotenv import load_dotenv
 
@@ -433,7 +434,7 @@ def getCriterionDataDF(resultsDF, saveName, excelFolder):
     mergedCriterionData.to_excel(os.path.join(excelFolder, saveName+'-CriterionData.xlsx'))
 
     saveDF = resultsDF.copy()
-    del saveDF['data_peerGPT']
+    #del saveDF['data_peerGPT']
     saveDF.to_excel(os.path.join(excelFolder, saveName+' - ScoreData.xlsx'))
     
     return mergedCriterionData
