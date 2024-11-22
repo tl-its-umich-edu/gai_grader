@@ -18,7 +18,7 @@ SELECT key.id as association_id, value.title
 FROM `udp-umich-prod.canvas.rubric_associations` 
 where value.context_type = 'Course'
 --and value.title like '%ASSIGNMENT TITLE%'
-and value.context_id =656488
+and value.context_id = @course_id
 and value.workflow_state='active'
 order by title) r_association,
 `udp-umich-prod.canvas.submissions` s

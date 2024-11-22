@@ -27,8 +27,16 @@ def execute_query(sql_file_name, courseId, csv_file_name):
     with open(sql_file_name, 'r') as file:
         query = file.read()
 
-    # Execute the query
-    query_job = client.query(query)
+    # Execute the query with parameters
+    #query = query.format(courseId=courseId)
+    #query_job = client.query(query)
+
+    job_config = bigquery.QueryJobConfig(
+    query_parameters=[
+        bigquery.ScalarQueryParameter("course_id", "INT64", courseId),
+        ]
+    )
+    query_job = client.query(query, job_config=job_config)
 
     # Process the results
     results = query_job.result()
@@ -259,11 +267,11 @@ assignmentId = 2217018
 courseName = 'MovementScience'
 
 # Step 1: Execute queries and save results to csv files
-step_1_data_prep(courseId, assignmentId, courseName)
+# step_1_data_prep(courseId, assignmentId, courseName)
 
 # Step 2: Get ChatGPT responses for submissions
 step_2_get_chatGPT_responses(courseId, assignmentId, courseName)
 
 # Step 3: Analyze the results and make charts and tables
-step_3_analyze_results(courseId, assignmentId, courseName)
+#step_3_analyze_results(courseId, assignmentId, courseName)
 

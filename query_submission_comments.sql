@@ -13,7 +13,7 @@ from
 `udp-umich-prod.canvas.assignments` a
 where s.value.assignment_id = a.key.id
 -- and a.value.title like '%ASSIGNMENT TITLE%'
-and s.value.course_id = 656488
+and s.value.course_id = @course_id
 and sc.value.submission_id = s.key.id
 and a.value.workflow_state='published'
 --and r_assessment.value.user_id not in (OPT_OUT_STUDENT1_CANVAS_ID, OPT_OUT_STUDENT2_CANVAS_ID)
